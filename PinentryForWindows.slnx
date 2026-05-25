@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="cliff.toml" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="LICENSE.md" />
+    <File Path="README.adoc" />
+  </Folder>
+  <Folder Name="/Source/">
+    <Project Path="src/PinentryForWindows/PinentryForWindows.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="tests/PinentryForWindows.Tests/PinentryForWindows.Tests.csproj" />
+  </Folder>
+</Solution>

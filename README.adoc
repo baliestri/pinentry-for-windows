@@ -1,0 +1,16 @@
+= Pinentry For Windows
+
+`Pinentry For Windows` is a modern pinentry implementation for GnuPG on Windows.
+It speaks the Assuan protocol expected by `gpg-agent` and uses the native Windows credential UI to ask for GPG key passphrases or PINs.
+
+== Overview
+
+The project provides a `PinentryForWindows.exe` executable that can be configured as GnuPG's `pinentry-program`.
+When `gpg-agent` needs a passphrase, it starts this executable, which:
+
+* handles Assuan commands such as `GETPIN`, `CONFIRM`, `MESSAGE`, `SETDESC`, `SETPROMPT`, `SETERROR`, `SETKEYINFO`, `CLEARPASSPHRASE`, `GETINFO`, and `OPTION`;
+* shows prompts through the native Windows credential UI (`CredUIPromptForWindowsCredentials`);
+* supports external passphrase caching through Windows `PasswordVault` when GnuPG sends `OPTION allow-external-password-cache`;
+* protects cache reads with Windows Hello when available;
+* removes cached entries with `CLEARPASSPHRASE`;
+* writes diagnostic logs to `%LOCALAPPDATA%\PinentryForWindows\pinentry.log` with redacted Assuan payloads.

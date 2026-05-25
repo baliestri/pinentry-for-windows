@@ -1,0 +1,70 @@
+name: Generate Tag and Update CHANGELOG
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., v1.2.3)"
+        required: true
+
+permissions:
+  id-token: write
+  contents: write
+  discussions: write
+
+jobs:
+  generate-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install typos-cli
+        run: |
+          wget https://github.com/crate-ci/typos/releases/download/v1.42.3/typos-v1.42.3-x86_64-unknown-linux-musl.tar.gz -O typos.tar.gz
+          tar -xzf typos.tar.gz
+          sudo mv typos /usr/local/bin/typos
+
+      - name: Configure git
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Checkout release branch
+        run: |
+          git checkout -b release/${{ inputs.version }}
+
+      - name: Generate CHANGELOG.md
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --tag ${{ inputs.version }} --prepend CHANGELOG.md --unreleased
+
+      - name: Commit CHANGELOG.md
+        run: |
+          git add CHANGELOG.md
+          git commit -m "docs: update CHANGELOG for ${{ inputs.version }}"
+
+      - name: Merge release branch into main and develop
+        run: |
+          git checkout main
+          git merge --no-ff --no-edit release/${{ inputs.version }}
+          git tag ${{ inputs.version }}
+          git checkout develop
+          git merge --no-ff --no-edit release/${{ inputs.version }}
+          git checkout ${{ inputs.version }}
+
+      - name: Push changes to repository
+        run: |
+          git push origin main
+          git push origin develop
+          git push origin --tags
+
+  call-release:
+    needs: generate-changelog
+    uses: ./.github/workflows/release-tag.yml
+    with:
+      version: ${{ inputs.version }}
