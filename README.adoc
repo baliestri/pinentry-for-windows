@@ -76,7 +76,7 @@ The application project is configured for Windows native publishing:
 
 * `PublishAot=true`
 * `PublishTrimmed=true`
-* WinForms enabled for Windows dialogs
+* CsWin32-generated `TaskDialogIndirect` bindings for Windows dialogs
 * Windows application manifest with Common Controls v6
 * native libraries included for self-extraction
 * single-file compression enabled

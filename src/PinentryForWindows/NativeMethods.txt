@@ -1,0 +1,3 @@
+TaskDialogIndirect
+TD_INFORMATION_ICON
+TD_WARNING_ICON
