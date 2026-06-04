@@ -3,93 +3,163 @@
 
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Text;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.Security.Credentials;
 
 namespace PinentryForWindows.Platform.Windows;
 
 internal static class CredentialManager {
-  public static PromptCredentialsResult? PromptForWindowsCredentials(PromptForWindowsCredentialsOptions options, string userName, string password) {
-    var uiInfo = new NativeMethods.CREDUI_INFO {
-      pszCaptionText = options.Caption,
-      pszMessageText = options.Message,
-      hwndParent = options.HwndParent,
-      hbmBanner = options.HbmBanner
-    };
+  private const int CRED_UI_CANCELLED = 1223;
 
-    var authPackage = 0;
-    var save = options.IsSaveChecked;
+  public static unsafe PromptCredentialsResult? PromptForWindowsCredentials(PromptForWindowsCredentialsOptions options, string userName,
+  string password) {
+    var authPackage = 0u;
+    var save = new BOOL(options.IsSaveChecked);
     var inAuthBuffer = IntPtr.Zero;
-    var inAuthBufferSize = 0;
-    var outAuthBuffer = IntPtr.Zero;
+    var inAuthBufferSize = 0u;
+    void* outAuthBuffer = null;
+    var outAuthBufferSize = 0u;
 
     try {
       if (!string.IsNullOrEmpty(userName) ||
           !string.IsNullOrEmpty(password)) {
         inAuthBufferSize = GetPackedCredentialSize(userName, password);
-        inAuthBuffer = Marshal.AllocCoTaskMem(inAuthBufferSize);
+        inAuthBuffer = Marshal.AllocCoTaskMem((int)inAuthBufferSize);
 
-        if (!NativeMethods.CredPackAuthenticationBuffer(NativeMethods.CRED_PACK_GENERIC_CREDENTIALS, userName, password,
-              inAuthBuffer, ref inAuthBufferSize)) {
-          throw new Win32Exception(Marshal.GetLastWin32Error());
+        fixed (char* userNamePtr = userName)
+        fixed (char* passwordPtr = password) {
+          var inAuthBufferSpan = new Span<byte>(inAuthBuffer.ToPointer(), checked((int)inAuthBufferSize));
+          if (!PInvoke.CredPackAuthenticationBuffer(
+                CRED_PACK_FLAGS.CRED_PACK_GENERIC_CREDENTIALS,
+                new PWSTR(userNamePtr),
+                new PWSTR(passwordPtr),
+                inAuthBufferSpan,
+                ref inAuthBufferSize)) {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+          }
         }
       }
 
-      var result = NativeMethods.CredUIPromptForWindowsCredentials(uiInfo, options.AuthErrorCode, ref authPackage,
-        inAuthBuffer, inAuthBufferSize, out outAuthBuffer, out var outAuthBufferSize, ref save, options.Flags);
+      fixed (char* captionPtr = options.Caption)
+      fixed (char* messagePtr = options.Message) {
+        var uiInfo = new CREDUI_INFOW {
+          cbSize = (uint)Marshal.SizeOf<CREDUI_INFOW>(),
+          hwndParent = new HWND(options.HwndParent),
+          pszCaptionText = new PCWSTR(captionPtr),
+          pszMessageText = new PCWSTR(messagePtr),
+          hbmBanner = new global::Windows.Win32.Graphics.Gdi.HBITMAP(options.HbmBanner)
+        };
 
-      return result switch {
-        NativeMethods.CredUiPromptReturnCode.Cancelled => null,
-        NativeMethods.CredUiPromptReturnCode.Success => UnpackCredentials(outAuthBuffer, outAuthBufferSize, save),
-        var _ => throw new Win32Exception((int)result)
-      };
+        var result = PInvoke.CredUIPromptForWindowsCredentials(
+          &uiInfo,
+          (uint)options.AuthErrorCode,
+          &authPackage,
+          inAuthBuffer.ToPointer(),
+          inAuthBufferSize,
+          &outAuthBuffer,
+          &outAuthBufferSize,
+          &save,
+          (CREDUIWIN_FLAGS)options.Flags);
+
+        if (result == 0) {
+          return UnpackCredentials(outAuthBuffer, outAuthBufferSize, save.Value != 0);
+        }
+
+        if (result == CRED_UI_CANCELLED) {
+          return null;
+        }
+
+        throw new Win32Exception((int)result);
+      }
     }
     finally {
-      if (inAuthBuffer != IntPtr.Zero) {
-        Marshal.ZeroFreeCoTaskMemUnicode(inAuthBuffer);
-      }
-
-      if (outAuthBuffer != IntPtr.Zero) {
-        Marshal.ZeroFreeCoTaskMemUnicode(outAuthBuffer);
-      }
+      ZeroFreeCoTaskMem(inAuthBuffer, inAuthBufferSize);
+      ZeroFreeCoTaskMem((IntPtr)outAuthBuffer, outAuthBufferSize);
     }
   }
 
-  private static int GetPackedCredentialSize(string userName, string password) {
-    var size = 0;
-    _ = NativeMethods.CredPackAuthenticationBuffer(NativeMethods.CRED_PACK_GENERIC_CREDENTIALS, userName, password,
-      IntPtr.Zero, ref size);
+  private static unsafe uint GetPackedCredentialSize(string userName, string password) {
+    var size = 0u;
+
+    fixed (char* userNamePtr = userName)
+    fixed (char* passwordPtr = password) {
+      _ = PInvoke.CredPackAuthenticationBuffer(
+        CRED_PACK_FLAGS.CRED_PACK_GENERIC_CREDENTIALS,
+        new PWSTR(userNamePtr),
+        new PWSTR(passwordPtr),
+        [],
+        ref size);
+    }
 
     return size > 0 ? size : throw new Win32Exception(Marshal.GetLastWin32Error());
   }
 
-  private static PromptCredentialsResult UnpackCredentials(IntPtr authBuffer, int authBufferSize, bool save) {
-    var userNameLength = 0;
-    var domainNameLength = 0;
-    var passwordLength = 0;
+  private static unsafe PromptCredentialsResult UnpackCredentials(void* authBuffer, uint authBufferSize, bool save) {
+    var userNameLength = 0u;
+    var domainNameLength = 0u;
+    var passwordLength = 0u;
 
-    _ = NativeMethods.CredUnPackAuthenticationBuffer(NativeMethods.CRED_PACK_GENERIC_CREDENTIALS, authBuffer, authBufferSize, null,
-      ref userNameLength, null, ref domainNameLength, null, ref passwordLength);
+    _ = PInvoke.CredUnPackAuthenticationBuffer(
+      CRED_PACK_FLAGS.CRED_PACK_GENERIC_CREDENTIALS,
+      authBuffer,
+      authBufferSize,
+      new PWSTR(null),
+      &userNameLength,
+      new PWSTR(null),
+      &domainNameLength,
+      new PWSTR(null),
+      &passwordLength);
 
     if (userNameLength <= 0 ||
         passwordLength <= 0) {
       throw new Win32Exception(Marshal.GetLastWin32Error());
     }
 
-    var userName = new StringBuilder(userNameLength);
-    var domainName = new StringBuilder(domainNameLength);
-    var password = new StringBuilder(passwordLength);
+    var userName = new char[userNameLength];
+    var domainName = new char[domainNameLength];
+    var password = new char[passwordLength];
 
-    if (!NativeMethods.CredUnPackAuthenticationBuffer(NativeMethods.CRED_PACK_GENERIC_CREDENTIALS, authBuffer, authBufferSize,
-          userName, ref userNameLength, domainName, ref domainNameLength, password, ref passwordLength)) {
-      throw new Win32Exception(Marshal.GetLastWin32Error());
+    fixed (char* userNamePtr = userName)
+    fixed (char* domainNamePtr = domainName)
+    fixed (char* passwordPtr = password) {
+      if (!PInvoke.CredUnPackAuthenticationBuffer(
+            CRED_PACK_FLAGS.CRED_PACK_GENERIC_CREDENTIALS,
+            authBuffer,
+            authBufferSize,
+            new PWSTR(userNamePtr),
+            &userNameLength,
+            new PWSTR(domainNamePtr),
+            &domainNameLength,
+            new PWSTR(passwordPtr),
+            &passwordLength)) {
+        throw new Win32Exception(Marshal.GetLastWin32Error());
+      }
     }
 
     return new PromptCredentialsResult {
-      UserName = userName.ToString(),
-      DomainName = domainName.ToString(),
-      Password = password.ToString(),
+      UserName = ToStringFromBuffer(userName),
+      DomainName = ToStringFromBuffer(domainName),
+      Password = ToStringFromBuffer(password),
       IsSaveChecked = save
     };
+  }
+
+  private static unsafe void ZeroFreeCoTaskMem(IntPtr buffer, uint byteCount) {
+    if (buffer == IntPtr.Zero) {
+      return;
+    }
+
+    if (byteCount > 0) {
+      new Span<byte>(buffer.ToPointer(), checked((int)byteCount)).Clear();
+    }
+
+    Marshal.FreeCoTaskMem(buffer);
+  }
+
+  private static string ToStringFromBuffer(char[] buffer) {
+    var length = Array.IndexOf(buffer, '\0');
+    return new string(buffer, 0, length >= 0 ? length : buffer.Length);
   }
 
   [Flags]
@@ -113,42 +183,5 @@ internal static class CredentialManager {
     public string DomainName { get; init; } = string.Empty;
     public string Password { get; init; } = string.Empty;
     public bool IsSaveChecked { get; init; }
-  }
-
-  private static class NativeMethods {
-    private const string CRED_UI = "credui.dll";
-    public const int CRED_PACK_GENERIC_CREDENTIALS = 0x4;
-
-    public enum CredUiPromptReturnCode {
-      Success = 0,
-      Cancelled = 1223
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public sealed class CREDUI_INFO {
-      public int cbSize = Marshal.SizeOf<CREDUI_INFO>();
-      public IntPtr hwndParent;
-
-      [MarshalAs(UnmanagedType.LPWStr)]
-      public string? pszMessageText;
-
-      [MarshalAs(UnmanagedType.LPWStr)]
-      public string? pszCaptionText;
-
-      public IntPtr hbmBanner;
-    }
-
-    [DllImport(CRED_UI, CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern bool CredPackAuthenticationBuffer(int flags, string userName, string password, IntPtr packedCredentials,
-    ref int packedCredentialsSize);
-
-    [DllImport(CRED_UI, CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern bool CredUnPackAuthenticationBuffer(int flags, IntPtr authBuffer, int authBufferSize, StringBuilder? userName,
-    ref int userNameSize, StringBuilder? domainName, ref int domainNameSize, StringBuilder? password, ref int passwordSize);
-
-    [DllImport(CRED_UI, CharSet = CharSet.Unicode)]
-    public static extern CredUiPromptReturnCode CredUIPromptForWindowsCredentials(CREDUI_INFO uiInfo, int authError, ref int authPackage,
-    IntPtr inAuthBuffer, int inAuthBufferSize, out IntPtr outAuthBuffer, out int outAuthBufferSize, ref bool save,
-    PromptForWindowsCredentialsFlag flags);
   }
 }
