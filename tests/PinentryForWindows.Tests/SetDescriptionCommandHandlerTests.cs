@@ -52,6 +52,6 @@ public sealed class SetDescriptionCommandHandlerTests {
   public async Task Missing_argument_returns_invalid_number_of_arguments() {
     using var _ = SessionStateScope.Create();
 
-    (await new SetDescriptionCommandHandler().InvokeAsync("SETDESC")).ShouldHaveSingleError(ExitCode.UNKNOW_VALUE);
+    (await new SetDescriptionCommandHandler().InvokeAsync("SETDESC")).ShouldHaveSingleError(ExitCode.UNKNOWN_VALUE);
   }
 }

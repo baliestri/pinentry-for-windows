@@ -36,6 +36,6 @@ public sealed class ClearPassphraseCommandHandlerTests {
     using var _ = SessionStateScope.Create();
     var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
 
-    (await new ClearPassphraseCommandHandler(credentials.Object).InvokeAsync(commandLine)).ShouldHaveSingleError(ExitCode.UNKNOW_VALUE);
+    (await new ClearPassphraseCommandHandler(credentials.Object).InvokeAsync(commandLine)).ShouldHaveSingleError(ExitCode.UNKNOWN_VALUE);
   }
 }

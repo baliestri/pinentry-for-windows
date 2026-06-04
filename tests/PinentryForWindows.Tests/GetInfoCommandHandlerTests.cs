@@ -46,7 +46,7 @@ public sealed class GetInfoCommandHandlerTests {
   public async Task Invalid_arity_returns_invalid_number_of_arguments(string commandLine) {
     using var _ = SessionStateScope.Create();
 
-    (await new GetInfoCommandHandler().InvokeAsync(commandLine)).ShouldHaveSingleError(ExitCode.UNKNOW_VALUE);
+    (await new GetInfoCommandHandler().InvokeAsync(commandLine)).ShouldHaveSingleError(ExitCode.UNKNOWN_VALUE);
   }
 
   [Fact]
@@ -55,7 +55,7 @@ public sealed class GetInfoCommandHandlerTests {
 
     var context = await new GetInfoCommandHandler().InvokeAsync("GETINFO unsupported-value");
 
-    context.ShouldHaveSingleError(ExitCode.UNKNOW_VALUE);
+    context.ShouldHaveSingleError(ExitCode.UNKNOWN_VALUE);
     context.Responses[0].Text().ShouldContain("unknown value for 'unsupported-value'");
   }
 }

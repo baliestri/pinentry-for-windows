@@ -54,7 +54,7 @@ public sealed class CommandStateHandlerTests {
   public async Task SetKeyInfo_rejects_invalid_arity() {
     using var _ = SessionStateScope.Create();
 
-    (await new SetKeyInfoCommandHandler().InvokeAsync("SETKEYINFO a b")).ShouldHaveSingleError(ExitCode.UNKNOW_VALUE);
+    (await new SetKeyInfoCommandHandler().InvokeAsync("SETKEYINFO a b")).ShouldHaveSingleError(ExitCode.UNKNOWN_VALUE);
   }
 
   [Fact]
@@ -149,6 +149,6 @@ public sealed class CommandStateHandlerTests {
       _ => throw new ArgumentOutOfRangeException(nameof(commandLine), commandLine, null)
     };
 
-    (await handler.InvokeAsync(commandLine)).ShouldHaveSingleError(ExitCode.UNKNOW_VALUE);
+    (await handler.InvokeAsync(commandLine)).ShouldHaveSingleError(ExitCode.UNKNOWN_VALUE);
   }
 }

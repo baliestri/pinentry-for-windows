@@ -16,7 +16,7 @@ internal sealed class GetInfoCommandHandler : CommandHandler {
   /// <inheritdoc />
   public override async Task HandleAsync(IReadOnlyAssuanCommand command, IServerContext serverContext) {
     if (command.Arguments.Length is 0 or > 1) {
-      var response = AssuanResponse.Error(ExitCode.UNKNOW_VALUE, "unknown value for WHAT");
+      var response = AssuanResponse.Error(ExitCode.UNKNOWN_VALUE, "unknown value for WHAT");
       await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
       return;
     }
@@ -46,7 +46,7 @@ internal sealed class GetInfoCommandHandler : CommandHandler {
         break;
       }
       default: {
-        var response = AssuanResponse.Error(ExitCode.UNKNOW_VALUE, $"unknown value for '{command.AsText()}'");
+        var response = AssuanResponse.Error(ExitCode.UNKNOWN_VALUE, $"unknown value for '{command.AsText()}'");
         await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
         break;
       }
