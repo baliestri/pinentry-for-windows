@@ -3,6 +3,18 @@
 `Pinentry For Windows` is a native Windows pinentry implementation for GnuPG.
 It speaks the Assuan protocol expected by `gpg-agent`, reads commands from standard input, writes Assuan responses to standard output, and uses Windows-native UI for passphrase and confirmation prompts.
 
+== Installation
+
+Install the latest release with PowerShell:
+
+[source,powershell]
+----
+irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/install.ps1 | iex
+----
+
+The installer detects the current Windows architecture, downloads the matching executable from the latest GitHub release, installs it into the GnuPG `bindir`, updates `gpg-agent.conf`, and restarts `gpg-agent`.
+If `gpg-agent.conf` already has a `pinentry-program` entry, the installer asks before replacing it.
+
 == Features
 
 * Native Windows passphrase entry through `CredUIPromptForWindowsCredentials`.
