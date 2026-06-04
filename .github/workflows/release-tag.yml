@@ -13,13 +13,76 @@ permissions:
   discussions: write
 
 jobs:
+  build-windows:
+    name: Build Windows ${{ matrix.runtime }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime:
+          - win-x64
+          - win-x86
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ inputs.version }}
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish ${{ matrix.runtime }}
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:RUNNER_TEMP "publish/${{ matrix.runtime }}"
+          dotnet publish "src/PinentryForWindows/PinentryForWindows.csproj" `
+            --configuration Release `
+            --runtime "${{ matrix.runtime }}" `
+            --output $publishDir
+
+      - name: Prepare ${{ matrix.runtime }} asset
+        shell: pwsh
+        run: |
+          $artifactDir = Join-Path $env:RUNNER_TEMP "artifacts"
+          $publishDir = Join-Path $env:RUNNER_TEMP "publish/${{ matrix.runtime }}"
+          $assetPath = Join-Path $artifactDir "pinentry-for-windows.${{ matrix.runtime }}.exe"
+
+          New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $publishDir 'PinentryForWindows.exe') -Destination $assetPath -Force
+
+      - name: Upload ${{ matrix.runtime }} artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinentry-windows-${{ matrix.runtime }}
+          path: ${{ runner.temp }}/artifacts/*.exe
+          if-no-files-found: error
+
   release-tag:
+    needs: build-windows
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           ref: refs/tags/${{ inputs.version }}
+          fetch-depth: 0
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pinentry-windows-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum *.exe > SHA256SUMS.txt
 
       - name: Extract changelog
         shell: bash
@@ -45,5 +108,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ inputs.version }}" \
+            dist/*.exe \
+            dist/SHA256SUMS.txt \
             --title "${{ inputs.version }}" \
             --notes "$RELEASE_NOTES"

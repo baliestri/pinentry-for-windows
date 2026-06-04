@@ -1,0 +1,30 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="GetVersionFromGit" BeforeTargets="BeforeBuild">
+    <Exec Command="git describe --tags --long --match v* &gt; gitversion.txt" ContinueOnError="true" />
+
+    <ReadLinesFromFile File="gitversion.txt">
+      <Output TaskParameter="Lines" PropertyName="GitVersion" />
+    </ReadLinesFromFile>
+
+    <PropertyGroup>
+      <RegexGitVersion>^v([^-]+)-(\d+)-g([0-9a-f]+)$</RegexGitVersion>
+      <GitVersion Condition="'$([System.Text.RegularExpressions.Regex]::IsMatch($(GitVersion), $(RegexGitVersion)))' == 'false'">v1.0.0-0-g0000000</GitVersion>
+      <FileVersion>$([System.Text.RegularExpressions.Regex]::Match($(GitVersion), $(RegexGitVersion)).Groups[1].Value)</FileVersion>
+      <BuildVersion>$([System.Text.RegularExpressions.Regex]::Match($(GitVersion), $(RegexGitVersion)).Groups[1].Value)</BuildVersion>
+      <AdditionalCommits>$([System.Text.RegularExpressions.Regex]::Match($(GitVersion), $(RegexGitVersion)).Groups[2].Value)</AdditionalCommits>
+      <CommitSHA>$([System.Text.RegularExpressions.Regex]::Match($(GitVersion), $(RegexGitVersion)).Groups[3].Value)</CommitSHA>
+
+      <FormattedVersion Condition="'$(AdditionalCommits)' == '0'">$(BuildVersion) SHA: $(CommitSHA)</FormattedVersion>
+      <FormattedVersion Condition="'$(FormattedVersion)' == ''">$(BuildVersion) Commits: $(AdditionalCommits) SHA: $(CommitSHA)</FormattedVersion>
+
+      <Version>$(FileVersion)</Version>
+      <InformationalVersion>$(FormattedVersion)</InformationalVersion>
+      <ProductVersion>$(FormattedVersion)</ProductVersion>
+      <PackageVersion>$(BuildVersion)</PackageVersion>
+      <NuGetVersion>$(BuildVersion)</NuGetVersion>
+      <AssemblyVersion>$(FileVersion)</AssemblyVersion>
+    </PropertyGroup>
+
+    <Delete Files="gitversion.txt" />
+  </Target>
+</Project>
