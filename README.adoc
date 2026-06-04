@@ -1,16 +1,381 @@
 = Pinentry For Windows
 
-`Pinentry For Windows` is a modern pinentry implementation for GnuPG on Windows.
-It speaks the Assuan protocol expected by `gpg-agent` and uses the native Windows credential UI to ask for GPG key passphrases or PINs.
+`Pinentry For Windows` is a native Windows pinentry implementation for GnuPG.
+It speaks the Assuan protocol expected by `gpg-agent`, reads commands from standard input, writes Assuan responses to standard output, and uses Windows-native UI for passphrase and confirmation prompts.
 
-== Overview
+== Features
 
-The project provides a `PinentryForWindows.exe` executable that can be configured as GnuPG's `pinentry-program`.
-When `gpg-agent` needs a passphrase, it starts this executable, which:
+* Native Windows passphrase entry through `CredUIPromptForWindowsCredentials`.
+* Native Windows message and confirmation dialogs through `TaskDialog`.
+* External passphrase cache support through Windows `PasswordVault` when GnuPG sends `OPTION allow-external-password-cache`.
+* Windows Hello gate for reading cached passphrases through `KeyCredentialManager`.
+* Best-effort cache behavior: cache read/store failures never prevent a normal prompt fallback.
+* Assuan payload logging with redaction enabled.
+* Diagnostic log file at `%LOCALAPPDATA%\PinentryForWindows\pinentry.log`.
+* Smart card description cleanup and cache-user extraction from `SETDESC` values.
+* Repeat-passphrase flow with mismatch warning and Assuan error response.
+* Console transport for the Assuan session over `stdin` and `stdout`.
+* Native AOT and trimming-ready Windows executable configuration.
+* Unit, process integration, protocol smoke, interactive UI, cache, and optional GPG smoke tests.
 
-* handles Assuan commands such as `GETPIN`, `CONFIRM`, `MESSAGE`, `SETDESC`, `SETPROMPT`, `SETERROR`, `SETKEYINFO`, `CLEARPASSPHRASE`, `GETINFO`, and `OPTION`;
-* shows prompts through the native Windows credential UI (`CredUIPromptForWindowsCredentials`);
-* supports external passphrase caching through Windows `PasswordVault` when GnuPG sends `OPTION allow-external-password-cache`;
-* protects cache reads with Windows Hello when available;
-* removes cached entries with `CLEARPASSPHRASE`;
-* writes diagnostic logs to `%LOCALAPPDATA%\PinentryForWindows\pinentry.log` with redacted Assuan payloads.
+== How It Works
+
+GnuPG starts the executable configured as `pinentry-program` and communicates with it through Assuan commands.
+`PinentryForWindows.exe` hosts an Assuan server over its console streams and registers handlers for the pinentry commands used by `gpg-agent`.
+
+When a passphrase is required, `GETPIN` opens the Windows credential UI.
+If external caching is enabled and a cache key is known, the application first tries to read the passphrase from Windows `PasswordVault`.
+Cache reads are protected by Windows Hello.
+If Windows Hello, `PasswordVault`, or cache lookup fails, the application falls back to a normal credential prompt.
+
+== Requirements
+
+* Windows 10 version 2004 / build 19041 or later.
+* .NET SDK 10.0 or later for building from source.
+* GnuPG for real `gpg-agent` integration.
+* Windows Hello is optional, but required for `PASSWORD_FROM_CACHE` cache-hit responses.
+
+== GnuPG Configuration
+
+Build or publish `PinentryForWindows.exe`, then configure `gpg-agent.conf`:
+
+[source,text]
+----
+pinentry-program C:/path/to/PinentryForWindows.exe
+----
+
+After changing `gpg-agent.conf`, restart the agent:
+
+[source,powershell]
+----
+gpgconf --kill gpg-agent
+----
+
+Use forward slashes or escaped backslashes in the path.
+
+== Building
+
+Restore and build the solution:
+
+[source,powershell]
+----
+dotnet restore PinentryForWindows.slnx
+dotnet build PinentryForWindows.slnx --configuration Debug
+----
+
+The debug executable is usually written under:
+
+[source,text]
+----
+src/PinentryForWindows/bin/Debug/net10.0-windows10.0.19041.0/win-x64/PinentryForWindows.exe
+----
+
+== Publishing
+
+The application project is configured for Windows native publishing:
+
+* `PublishAot=true`
+* `PublishTrimmed=true`
+* WinForms enabled for Windows dialogs
+* Windows application manifest with Common Controls v6
+* native libraries included for self-extraction
+* single-file compression enabled
+
+Publish for `win-x64`:
+
+[source,powershell]
+----
+dotnet publish src/PinentryForWindows/PinentryForWindows.csproj --configuration Release --runtime win-x64
+----
+
+== Supported Assuan Commands
+
+[cols="1,3", options="header"]
+|===
+| Command | Behavior
+
+| `BYE`
+| Sends `OK closing connection` and closes the session.
+
+| `CLEARPASSPHRASE <key>`
+| Removes `pfwcache:<key>` from Windows `PasswordVault`.
+
+| `CONFIRM`
+| Shows a native confirmation dialog using the current title, description, OK text, and Cancel text.
+
+| `CONFIRM --one-button`
+| Shows a native informational dialog and returns `OK`.
+
+| `GETINFO version`
+| Returns the executing assembly version.
+
+| `GETINFO pid`
+| Returns the current process id.
+
+| `GETINFO flavor`
+| Returns `pinentry-for-windows`.
+
+| `GETINFO ttyinfo`
+| Returns `CONOUT$ w32`.
+
+| `GETPIN`
+| Returns a passphrase from cache or opens the Windows credential UI.
+
+| `MESSAGE [text]`
+| Shows a native informational dialog. Uses command text when present, otherwise the current description.
+
+| `OPTION <name>[=<value>]`
+| Handles supported pinentry options and ignores unknown options with `OK`.
+
+| `RESET`
+| Restores all session state defaults.
+
+| `SETCANCEL <text>`
+| Sets the Cancel button text. `_` is converted to `&` for Windows access keys.
+
+| `SETDESC <text>`
+| Sets the prompt description and extracts cache-user metadata when possible.
+
+| `SETERROR <text>`
+| Sets an error message that is prepended to the next `GETPIN` prompt and skips cache lookup once.
+
+| `SETKEYINFO <key>`
+| Sets the key info used for the cache key and default credential user.
+
+| `SETKEYINFO --clear`
+| Clears the current key info.
+
+| `SETNOTOK <text>`
+| Sets the Not OK button text. `_` is converted to `&`.
+
+| `SETOK <text>`
+| Sets the OK button text. `_` is converted to `&`.
+
+| `SETPROMPT <text>`
+| Stores the prompt label in session state.
+
+| `SETREPEAT <text>`
+| Enables repeat-passphrase mode and sets the repeat prompt description.
+
+| `SETREPEATERROR <text>`
+| Sets the warning text shown when repeated passphrases do not match.
+
+| `SETTIMEOUT <seconds>`
+| Stores a numeric timeout value when one is provided. Invalid values are ignored and still return `OK`.
+
+| `SETTITLE <text>`
+| Sets the dialog title.
+|===
+
+Invalid arity for commands that require specific arguments returns `ERR 67109144`.
+Canceled prompts return `ERR 83886179`.
+Repeat mismatch returns `ERR 83886194`.
+
+== Supported Options
+
+[cols="1,3", options="header"]
+|===
+| Option | Behavior
+
+| `allow-external-password-cache`
+| Enables use of Windows `PasswordVault` for the session.
+
+| `default-ok=<text>`
+| Sets the OK button text. `_` is converted to `&`.
+
+| `default-cancel=<text>`
+| Sets the Cancel button text. `_` is converted to `&`.
+
+| `default-notok=<text>`
+| Sets the Not OK button text. `_` is converted to `&`.
+
+| `default-prompt=<text>`
+| Sets the prompt label.
+
+| `grab`
+| Marks keyboard grab as requested in session state.
+
+| `no-grab`
+| Clears keyboard grab in session state.
+|===
+
+Unknown options are accepted and ignored.
+
+== Passphrase Prompts
+
+`GETPIN` chooses the credential user in this order:
+
+* cache user extracted from `SETDESC`
+* current `SETKEYINFO` value
+* current title
+
+The prompt message is built from the current description.
+If `SETERROR` was sent, its text is prepended to the next prompt and then cleared.
+`SETERROR` also prevents that `GETPIN` call from using cached credentials.
+
+== External Cache And Windows Hello
+
+External caching is enabled only after `OPTION allow-external-password-cache`.
+The cache key is built as `pfwcache:<SETKEYINFO value>`.
+If `SETKEYINFO` is empty, no cache lookup or store is attempted.
+
+Cache read flow:
+
+* find credentials in Windows `PasswordVault`
+* unlock the cache read with Windows Hello
+* return `S PASSWORD_FROM_CACHE`, `D <passphrase>`, and `OK`
+
+Cache write flow:
+
+* after a successful non-repeat `GETPIN`, store the passphrase in `PasswordVault`
+* replace any existing credential for the same cache key
+* ignore store failures and keep the successful `GETPIN` response
+
+Cache cleanup uses `CLEARPASSPHRASE <key>` and removes `pfwcache:<key>`.
+
+Windows Hello is best-effort.
+If it is unavailable, cancelled, or fails, `GETPIN` falls back to a normal credential prompt.
+
+== Smart Card And Metadata Parsing
+
+`SETDESC` recognizes metadata commonly sent by GnuPG and smart card flows.
+
+It can extract the cache user from:
+
+* key ids matching `ID <16 hexadecimal characters>`
+* MAC-like values with 16 colon-separated bytes
+* smart card `Holder:` and `Number:` lines
+
+For smart card descriptions, `Number:` and `Holder:` lines are removed from the user-facing description.
+The extracted cache user is formatted as:
+
+[source,text]
+----
+Holder (Number)
+----
+
+when both values are present.
+
+== Repeat Passphrase Flow
+
+`SETREPEAT <text>` enables repeat-passphrase mode.
+The next `GETPIN` prompts twice:
+
+* first prompt uses the normal title and description
+* second prompt uses `<title> - Repeat` and the repeat description
+
+If both values match, the response is:
+
+[source,text]
+----
+S PIN_REPEATED
+D <passphrase>
+OK
+----
+
+If they do not match, a warning dialog is shown and the response is `ERR 83886194 PIN not repeated`.
+
+== Logging
+
+Diagnostic logs are written to:
+
+[source,text]
+----
+%LOCALAPPDATA%\PinentryForWindows\pinentry.log
+----
+
+Logging behavior:
+
+* records `Debug` and higher levels, excluding `None`
+* uses Assuan redacted payload logging
+* normalizes line breaks to keep one log entry per line
+* includes exception details when available
+* never throws back into pinentry if the log file cannot be written
+
+== Testing
+
+Run the automated .NET test suite:
+
+[source,powershell]
+----
+dotnet test PinentryForWindows.slnx
+----
+
+The test project uses xUnit v3, Shouldly, Moq, and process-level integration tests.
+Parallelization is disabled because command handlers share session state.
+
+Run protocol smoke tests through the PowerShell script:
+
+[source,powershell]
+----
+pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Test-PinentryForWindows.ps1
+----
+
+Useful script switches:
+
+[cols="1,3", options="header"]
+|===
+| Switch | Behavior
+
+| `-NoBuild`
+| Skip the build and use an existing executable.
+
+| `-Restore`
+| Run `dotnet restore` before building.
+
+| `-Configuration <name>`
+| Select the build configuration. Defaults to `Debug`.
+
+| `-Runtime <rid>`
+| Select the runtime identifier. Defaults to `win-x64`.
+
+| `-ExpectedPin <pin>`
+| Sets the PIN/passphrase expected by interactive scenarios. Defaults to `123456`.
+
+| `-Interactive`
+| Runs manual `GETPIN`, CredUI, cache, Windows Hello, repeat, and cache cleanup scenarios.
+
+| `-RequireWindowsHelloCache`
+| Fails the cache-hit scenario if it falls back to a normal prompt instead of returning `S PASSWORD_FROM_CACHE`.
+
+| `-IncludeDialogTests`
+| Runs manual `MESSAGE` and `CONFIRM --one-button` dialog scenarios.
+
+| `-IncludeCancelTests`
+| Runs a manual cancellation scenario for `GETPIN`.
+
+| `-IncludeGpgKeyTests`
+| Creates a temporary `GNUPGHOME`, generates a throwaway GPG key, signs a message, then cleans up.
+|===
+
+Example interactive run:
+
+[source,powershell]
+----
+pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Test-PinentryForWindows.ps1 -Interactive
+----
+
+If Windows Hello is not available, the cache-hit interactive scenario can pass with a warning because the application correctly falls back to a normal prompt.
+
+== Release Automation
+
+The repository includes GitHub Actions workflows for release preparation:
+
+* `.github/workflows/generate-changelog.yml` creates a release branch, generates `CHANGELOG.md` with `git-cliff`, tags the version, and merges into `main` and `develop`.
+* `.github/workflows/release-tag.yml` creates the GitHub release from changelog notes.
+
+The changelog configuration expects Conventional Commits.
+
+== Operational Notes
+
+* The executable is designed to be launched by `gpg-agent`, not used as a long-running background service.
+* Communication happens over standard input and standard output.
+* When standard input closes during an interactive prompt, the console transport waits for the prompt to complete before sending `BYE`.
+* `grab` and `no-grab` are tracked in session state, but keyboard grabbing is not implemented by the Windows UI layer.
+* `SETTIMEOUT` stores timeout values, but prompt timeout enforcement is not implemented by the credential UI layer.
+* Cache and logging are intentionally best-effort so diagnostic or platform failures do not block passphrase entry.
+
+== License
+
+This project is licensed under the MIT License.
+See link:LICENSE.md[LICENSE] for details.
