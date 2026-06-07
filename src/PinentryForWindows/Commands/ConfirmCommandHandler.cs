@@ -19,16 +19,24 @@ internal sealed class ConfirmCommandHandler(IDialogService dialogService) : Comm
   public override async Task HandleAsync(IReadOnlyAssuanCommand command, IServerContext serverContext) {
     if (command.Arguments.Length == 1 &&
         command.Arguments[0].Equals("--one-button", StringComparison.OrdinalIgnoreCase)) {
-      dialogService.ShowMessage(SessionState.Title, SessionState.Description);
+      var dialogResponse = dialogService.ShowMessage(SessionState.Title, SessionState.Description, SessionState.Timeout);
 
-      var response = AssuanResponse.Ok();
+      var response = dialogResponse == DialogResponse.TimedOut
+        ? AssuanResponse.Error(ExitCode.TIMEOUT, "timeout")
+        : AssuanResponse.Ok();
+
       await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
       return;
     }
 
-    var finalResponse = dialogService.Confirm(SessionState.Title, SessionState.Description, SessionState.OkButtonText, SessionState.CancelButtonText)
-      ? AssuanResponse.Ok()
-      : AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
+    var confirmResponse = dialogService.Confirm(SessionState.Title, SessionState.Description, SessionState.OkButtonText,
+      SessionState.CancelButtonText, SessionState.Timeout);
+
+    var finalResponse = confirmResponse switch {
+      DialogResponse.Accepted => AssuanResponse.Ok(),
+      DialogResponse.TimedOut => AssuanResponse.Error(ExitCode.TIMEOUT, "timeout"),
+      var _ => AssuanResponse.Error(ExitCode.CANCELLED, "cancelled")
+    };
 
     await serverContext.SendResponseAsync(finalResponse, serverContext.Session.CancellationToken);
   }
