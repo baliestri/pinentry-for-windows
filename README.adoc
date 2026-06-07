@@ -15,6 +15,29 @@ irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/instal
 The installer detects the current Windows architecture, downloads the matching executable from the latest GitHub release, installs it into the GnuPG `bindir`, updates `gpg-agent.conf`, and restarts `gpg-agent`.
 If `gpg-agent.conf` already has a `pinentry-program` entry, the installer asks before replacing it.
 
+Use a script block invocation when passing options to the streamed installer:
+
+[source,powershell]
+----
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/install.ps1))) -Update
+----
+
+Supported installer options:
+
+* `-Update` downloads the latest release and replaces the installed executable.
+* `-Uninstall` removes the installed executable and prompts before removing or restoring the `pinentry-program` setting.
+* `-NoRestartAgent` skips `gpg-agent` restart after configuration changes.
+* `-InstallDirectory <path>` installs to or uninstalls from a specific directory instead of the GnuPG `bindir`.
+
+Examples:
+
+[source,powershell]
+----
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/install.ps1))) -Update -NoRestartAgent
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/install.ps1))) -Uninstall
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/install.ps1))) -InstallDirectory "$env:LOCALAPPDATA\PinentryForWindows"
+----
+
 == Features
 
 * Native Windows passphrase entry through `CredUIPromptForWindowsCredentials`.
