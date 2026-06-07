@@ -11,6 +11,7 @@ $Repository = 'baliestri/pinentry-for-windows'
 $PinentryProgramPattern = '^\s*pinentry-program\s+'
 $PreviousPinentryProgramPrefix = '# pinentry-for-windows previous-pinentry-program: '
 $PinentryExecutablePattern = 'pinentry-for-windows.*.exe'
+$ChecksumAssetName = 'SHA256SUMS.txt'
 
 function Write-Step {
   param([Parameter(Mandatory = $true)][string]$Message)
@@ -110,9 +111,7 @@ function Get-ReleaseAsset {
 
   foreach ($runtimeIdentifier in $RuntimeIdentifiers) {
     $assetName = "pinentry-for-windows.$runtimeIdentifier.exe"
-    Write-Step "Looking for release asset $assetName."
-
-    $asset = $Release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+    $asset = Get-ReleaseAssetByName -Release $Release -AssetName $assetName
 
     if ($null -ne $asset) {
       return $asset
@@ -120,6 +119,28 @@ function Get-ReleaseAsset {
   }
 
   throw "Release $($Release.tag_name) does not contain a compatible Windows asset."
+}
+
+function Get-ReleaseAssetByName {
+  param(
+    [Parameter(Mandatory = $true)]$Release,
+    [Parameter(Mandatory = $true)][string]$AssetName
+  )
+
+  Write-Step "Looking for release asset $AssetName."
+  return $Release.assets | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1
+}
+
+function Get-ReleaseChecksumAsset {
+  param([Parameter(Mandatory = $true)]$Release)
+
+  $asset = Get-ReleaseAssetByName -Release $Release -AssetName $ChecksumAssetName
+
+  if ($null -eq $asset) {
+    throw "Release $($Release.tag_name) does not contain $ChecksumAssetName."
+  }
+
+  return $asset
 }
 
 function Download-Asset {
@@ -138,6 +159,54 @@ function Download-Asset {
   finally {
     $webClient.Dispose()
   }
+}
+
+function Get-ExpectedAssetChecksum {
+  param(
+    [Parameter(Mandatory = $true)][string]$ChecksumPath,
+    [Parameter(Mandatory = $true)][string]$AssetName
+  )
+
+  $checksumLinePattern = '^\s*(?<Hash>[A-Fa-f0-9]{64})\s+\*?(?<Name>.+?)\s*$'
+  $assetNamePattern = '\s+\*?' + [regex]::Escape($AssetName) + '\s*$'
+
+  foreach ($line in (Get-Content -LiteralPath $ChecksumPath)) {
+    if ([string]::IsNullOrWhiteSpace($line)) {
+      continue
+    }
+
+    if ($line -match $checksumLinePattern) {
+      if ($Matches['Name'].Trim() -eq $AssetName) {
+        return $Matches['Hash']
+      }
+
+      continue
+    }
+
+    if ($line -match $assetNamePattern) {
+      throw "Checksum entry for $AssetName in $ChecksumAssetName is malformed."
+    }
+  }
+
+  throw "$ChecksumAssetName does not contain a checksum entry for $AssetName."
+}
+
+function Assert-DownloadedAssetChecksum {
+  param(
+    [Parameter(Mandatory = $true)][string]$AssetName,
+    [Parameter(Mandatory = $true)][string]$AssetPath,
+    [Parameter(Mandatory = $true)][string]$ChecksumPath
+  )
+
+  Write-Step "Verifying SHA-256 checksum for $AssetName."
+  $expectedHash = Get-ExpectedAssetChecksum -ChecksumPath $ChecksumPath -AssetName $AssetName
+  $actualHash = (Get-FileHash -LiteralPath $AssetPath -Algorithm SHA256).Hash
+
+  if (-not [string]::Equals($expectedHash, $actualHash, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Checksum verification failed for $AssetName. Expected $expectedHash but computed $actualHash."
+  }
+
+  Write-Step "Checksum verification succeeded for $AssetName."
 }
 
 function Convert-ToGpgConfigPath {
@@ -563,8 +632,14 @@ function Install-LatestRelease {
 
   $asset = Get-ReleaseAsset -Release $release -RuntimeIdentifiers $runtimeIdentifiers
   Write-Step "Selected release asset $($asset.name)."
+  $checksumAsset = Get-ReleaseChecksumAsset -Release $release
+  Write-Step "Selected checksum asset $($checksumAsset.name)."
+
   $temporaryPath = Join-Path ([System.IO.Path]::GetTempPath()) $asset.name
+  $temporaryChecksumPath = Join-Path ([System.IO.Path]::GetTempPath()) $checksumAsset.name
   Download-Asset -Asset $asset -DestinationPath $temporaryPath
+  Download-Asset -Asset $checksumAsset -DestinationPath $temporaryChecksumPath
+  Assert-DownloadedAssetChecksum -AssetName $asset.name -AssetPath $temporaryPath -ChecksumPath $temporaryChecksumPath
 
   $installPath = Join-Path $InstallDirectory $asset.name
   Write-Step "Installing executable to $installPath."
