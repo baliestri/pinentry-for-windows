@@ -28,7 +28,7 @@ If `gpg-agent.conf` already has a `pinentry-program` entry, the installer asks b
 * Repeat-passphrase flow with mismatch warning and Assuan error response.
 * Console transport for the Assuan session over `stdin` and `stdout`.
 * Native AOT and trimming-ready Windows executable configuration.
-* Unit, process integration, protocol smoke, interactive UI, cache, and optional GPG smoke tests.
+* Unit, process integration, GPG agent compatibility replay, protocol smoke, interactive UI, cache, and optional GPG smoke tests.
 
 == How It Works
 
@@ -315,6 +315,7 @@ dotnet test PinentryForWindows.slnx
 
 The test project uses xUnit v3, Shouldly, Moq, and process-level integration tests.
 Parallelization is disabled because command handlers share session state.
+GPG agent compatibility replay tests are documented in link:docs/gpg-agent-compatibility-tests.adoc[docs/gpg-agent-compatibility-tests.adoc].
 
 Run protocol smoke tests through the PowerShell script:
 
