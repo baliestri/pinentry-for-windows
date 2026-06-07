@@ -20,9 +20,12 @@ internal sealed class MessageCommandHandler(IDialogService dialogService) : Comm
   public override async Task HandleAsync(IReadOnlyAssuanCommand command, IServerContext serverContext) {
     var description = command.Arguments.Length > 0 ? command.AsText() : SessionState.Description;
 
-    dialogService.ShowMessage(SessionState.Title, description);
+    var dialogResponse = dialogService.ShowMessage(SessionState.Title, description, SessionState.Timeout);
 
-    var response = AssuanResponse.Ok();
+    var response = dialogResponse == DialogResponse.TimedOut
+      ? AssuanResponse.Error(ExitCode.TIMEOUT, "timeout")
+      : AssuanResponse.Ok();
+
     await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
   }
 }

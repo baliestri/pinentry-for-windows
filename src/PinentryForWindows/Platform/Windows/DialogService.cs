@@ -12,36 +12,44 @@ namespace PinentryForWindows.Platform.Windows;
 internal sealed class DialogService : IDialogService {
   private const int OK_BUTTON_ID = 1;
   private const int CANCEL_BUTTON_ID = 2;
+  private static readonly PFTASKDIALOGCALLBACK _callback = TaskDialogCallback;
 
   /// <inheritdoc />
-  public void ShowMessage(string title, string message)
-    => _ = ShowMessage(title, message, DialogIcon.Information);
+  public DialogResponse ShowMessage(string title, string message, int timeoutSeconds = 0)
+    => ShowMessage(title, message, DialogIcon.Information, timeoutSeconds) == DialogResult.TimedOut
+      ? DialogResponse.TimedOut
+      : DialogResponse.Accepted;
 
   /// <inheritdoc />
   public void ShowWarning(string title, string message)
-    => _ = ShowMessage(title, message, DialogIcon.Warning);
+    => _ = ShowMessage(title, message, DialogIcon.Warning, 0);
 
   /// <inheritdoc />
-  public bool Confirm(string title, string message, string? okButtonText = null, string? cancelButtonText = null) {
+  public DialogResponse Confirm(string title, string message, string? okButtonText = null, string? cancelButtonText = null, int timeoutSeconds = 0) {
     var okText = !string.IsNullOrWhiteSpace(okButtonText) ? okButtonText : "OK";
     var cancelText = !string.IsNullOrWhiteSpace(cancelButtonText) ? cancelButtonText : "Cancel";
 
-    return ShowConfirm(title, message, okText, cancelText) == OK_BUTTON_ID;
+    var result = ShowConfirm(title, message, okText, cancelText, timeoutSeconds);
+    return result switch {
+      DialogResult.Accepted => DialogResponse.Accepted,
+      DialogResult.TimedOut => DialogResponse.TimedOut,
+      var _ => DialogResponse.Cancelled
+    };
   }
 
-  private static unsafe int ShowMessage(string title, string message, DialogIcon icon) {
+  private static unsafe DialogResult ShowMessage(string title, string message, DialogIcon icon, int timeoutSeconds) {
     fixed (char* titlePtr = title)
     fixed (char* messagePtr = message) {
       var config = CreateConfig(titlePtr, messagePtr, icon);
       config.dwCommonButtons = TASKDIALOG_COMMON_BUTTON_FLAGS.TDCBF_OK_BUTTON;
 
-      PInvoke.TaskDialogIndirect(in config, out var selectedButton, out _, out _).ThrowOnFailure();
+      _ = ShowTaskDialog(ref config, timeoutSeconds, OK_BUTTON_ID, out var timedOut);
 
-      return selectedButton;
+      return timedOut ? DialogResult.TimedOut : DialogResult.Accepted;
     }
   }
 
-  private static unsafe int ShowConfirm(string title, string message, string okButtonText, string cancelButtonText) {
+  private static unsafe DialogResult ShowConfirm(string title, string message, string okButtonText, string cancelButtonText, int timeoutSeconds) {
     fixed (char* titlePtr = title)
     fixed (char* messagePtr = message)
     fixed (char* okButtonTextPtr = okButtonText)
@@ -62,10 +70,50 @@ internal sealed class DialogService : IDialogService {
       config.pButtons = buttons;
       config.nDefaultButton = OK_BUTTON_ID;
 
-      PInvoke.TaskDialogIndirect(in config, out var selectedButton, out _, out _).ThrowOnFailure();
+      var selectedButton = ShowTaskDialog(ref config, timeoutSeconds, CANCEL_BUTTON_ID, out var timedOut);
 
+      if (timedOut) {
+        return DialogResult.TimedOut;
+      }
+
+      return selectedButton == OK_BUTTON_ID ? DialogResult.Accepted : DialogResult.Cancelled;
+    }
+  }
+
+  private static int ShowTaskDialog(ref TASKDIALOGCONFIG config, int timeoutSeconds, int timeoutButtonId, out bool timedOut) {
+    if (timeoutSeconds <= 0) {
+      PInvoke.TaskDialogIndirect(in config, out var selectedButton, out _, out _).ThrowOnFailure();
+      timedOut = false;
       return selectedButton;
     }
+
+    var timeoutState = new TimeoutState(timeoutSeconds, timeoutButtonId);
+    var timeoutStateHandle = GCHandle.Alloc(timeoutState);
+    try {
+      config.dwFlags |= TASKDIALOG_FLAGS.TDF_CALLBACK_TIMER;
+      config.pfCallback = _callback;
+      config.lpCallbackData = GCHandle.ToIntPtr(timeoutStateHandle);
+
+      PInvoke.TaskDialogIndirect(in config, out var selectedButton, out _, out _).ThrowOnFailure();
+      timedOut = timeoutState.TimedOut;
+      return selectedButton;
+    }
+    finally {
+      timeoutStateHandle.Free();
+    }
+  }
+
+  private static HRESULT TaskDialogCallback(HWND hwnd, TASKDIALOG_NOTIFICATIONS msg, WPARAM wParam, LPARAM lParam, nint lpRefData) {
+    if (msg != TASKDIALOG_NOTIFICATIONS.TDN_TIMER ||
+        GCHandle.FromIntPtr(lpRefData).Target is not TimeoutState timeoutState ||
+        (long)wParam.Value < timeoutState.TimeoutMilliseconds) {
+      return new HRESULT(0);
+    }
+
+    timeoutState.TimedOut = true;
+    _ = PInvoke.SendMessage(hwnd, (uint)TASKDIALOG_MESSAGES.TDM_CLICK_BUTTON, new WPARAM((nuint)timeoutState.TimeoutButtonId), default);
+
+    return new HRESULT(0);
   }
 
   private static unsafe TASKDIALOGCONFIG CreateConfig(char* title, char* message, DialogIcon icon) {
@@ -77,7 +125,7 @@ internal sealed class DialogService : IDialogService {
 
     config.Anonymous1.pszMainIcon = icon switch {
       DialogIcon.Warning => PInvoke.TD_WARNING_ICON,
-      _ => PInvoke.TD_INFORMATION_ICON
+      var _ => PInvoke.TD_INFORMATION_ICON
     };
 
     return config;
@@ -86,5 +134,17 @@ internal sealed class DialogService : IDialogService {
   private enum DialogIcon {
     Information,
     Warning
+  }
+
+  private enum DialogResult {
+    Accepted,
+    Cancelled,
+    TimedOut
+  }
+
+  private sealed class TimeoutState(int timeoutSeconds, int timeoutButtonId) {
+    public long TimeoutMilliseconds { get; } = Math.Min((long)timeoutSeconds * 1000, uint.MaxValue);
+    public int TimeoutButtonId { get; } = timeoutButtonId;
+    public bool TimedOut { get; set; }
   }
 }
