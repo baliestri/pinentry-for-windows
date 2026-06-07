@@ -17,6 +17,7 @@ internal sealed class CredentialService : ICredentialService {
       return null;
     }
 
+    // CredUIPromptForWindowsCredentials doesn't expose a timeout or a safe way to cancel an already displayed dialog.
     return await Task.Run(() => PromptWithNativeCredentialDialog(title, message, userName), ct);
   }
 

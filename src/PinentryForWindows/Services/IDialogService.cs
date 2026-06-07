@@ -3,8 +3,14 @@
 
 namespace PinentryForWindows.Services;
 
+internal enum DialogResponse {
+  Accepted,
+  Cancelled,
+  TimedOut
+}
+
 internal interface IDialogService {
-  void ShowMessage(string title, string message);
+  DialogResponse ShowMessage(string title, string message, int timeoutSeconds = 0);
   void ShowWarning(string title, string message);
-  bool Confirm(string title, string message, string? okButtonText = null, string? cancelButtonText = null);
+  DialogResponse Confirm(string title, string message, string? okButtonText = null, string? cancelButtonText = null, int timeoutSeconds = 0);
 }
