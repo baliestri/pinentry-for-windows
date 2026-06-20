@@ -1,0 +1,265 @@
+= Security Model
+
+This document defines the security goals, non-goals, and expected guarantees for Pinentry For Windows.
+It describes what the passphrase cache and Windows Hello gate currently protect against, where gaps remain, and what follow-up work is needed to strengthen cache protection.
+
+This document does not describe runtime behavior changes.
+It makes the current behavior and future target explicit so that implementation decisions can be evaluated against a shared baseline.
+
+== Threat Model
+
+The threat model describes the attacker categories considered and not considered by this project.
+
+=== Attacker Categories
+
+[cols="2,1,3", options="header"]
+|===
+| Attacker | In Scope | Notes
+
+| Different local account
+| Yes
+| Windows `PasswordVault` is scoped to the authenticated user.
+  A different local account cannot read the cached passphrase without administrative privilege escalation.
+
+| Same-user process
+| No
+| Any process running as the same Windows user can enumerate and read `PasswordVault` credentials.
+  No inter-process isolation is applied within a single user session.
+
+| Malware running as user
+| No
+| Follows from the same-user process boundary above.
+  Malware with user-level execution can retrieve cached passphrases without needing Windows Hello.
+
+| Administrator / SYSTEM
+| No
+| A local administrator can impersonate the target user or read credential storage directly.
+  This project provides no protection against privileged local access.
+
+| Remote or RDP session
+| Partial
+| Windows Hello biometric authentication is unavailable over Remote Desktop.
+  When Windows Hello is unavailable, the cache is not served and the user is prompted normally.
+  This is a side effect of the best-effort fallback design, not an explicit access control boundary.
+
+| Memory inspection
+| No
+| Passphrases exist in managed heap memory during and briefly after prompts.
+  Process dumps or memory scanners can recover them.
+  Managed strings are not pinned or zeroed after use.
+
+| Network attacker
+| No
+| The executable communicates only over `stdin`/`stdout` with `gpg-agent`.
+  There are no network sockets or external endpoints to attack remotely.
+|===
+
+== Security Goals
+
+The following properties are considered goals of the current implementation.
+
+**Cross-account isolation.**
+Windows `PasswordVault` is scoped to the authenticated Windows user account at the OS level.
+A logged-in user cannot read another user's cached passphrases without administrator access.
+
+**Physical user presence for cache reads.**
+Cache reads are gated behind a Windows Hello challenge-sign flow.
+Windows Hello requires a biometric (face, fingerprint) or PIN that is verified locally on the device.
+A process that can read `PasswordVault` at rest cannot trigger the cache-hit path without passing Windows Hello.
+
+**Cache read does not silently skip Hello.**
+If Windows Hello fails, is cancelled, or is unavailable, the cache is not served.
+The application falls back to a normal interactive prompt.
+There is no bypass mode that serves cached passphrases without user confirmation.
+
+**Passphrase entry is never blocked by cache or Hello failures.**
+Cache misses, Hello failures, and `PasswordVault` errors are all best-effort.
+They cause the application to fall back to a normal prompt, not to an error state.
+The user can always enter their passphrase manually regardless of cache or Hello state.
+
+**Cache is disabled by default.**
+External caching must be explicitly enabled by `gpg-agent` sending `OPTION allow-external-password-cache`.
+A session that does not send this option never reads or writes `PasswordVault`.
+
+**Cache can be explicitly cleared.**
+GnuPG can remove a specific cached passphrase by sending `CLEARPASSPHRASE <key>`.
+This removes `pfwcache:<key>` from `PasswordVault` for the current user.
+
+== Non-Goals
+
+The following properties are explicitly out of scope for the current implementation.
+
+**Same-user process isolation.**
+No mechanism prevents another process running as the same Windows user from reading `PasswordVault` credentials directly, without going through this application or triggering Windows Hello.
+
+**Protection against malware.**
+Malware with user-level execution can read `PasswordVault` directly, hook the application's memory, or intercept Assuan output.
+
+**Cryptographic binding of cached passphrases to Hello keys.**
+The passphrase stored in `PasswordVault` is not encrypted with the Windows Hello-backed key.
+`PasswordVault` provides DPAPI-based at-rest encryption tied to the user account, but the Hello challenge-sign step is a gate enforced in application code only.
+If an attacker bypasses this application and reads `PasswordVault` directly, they do not need to pass Windows Hello.
+
+**Kernel-level memory protection.**
+Passphrases are held in .NET managed strings.
+They are subject to garbage-collector movement, are not wiped on release, and can be recovered from process memory dumps.
+
+**Protection in RDP or headless sessions.**
+Windows Hello biometric authentication is unavailable over Remote Desktop Protocol.
+The cache fallback behavior means passphrases are not served from cache in these sessions, but this is an accidental property rather than a designed control.
+It is not guaranteed to hold across future Windows changes.
+
+**Administrator protection.**
+A local administrator can read or impersonate the user's `PasswordVault` contents.
+
+**Release binary signing.**
+Published binaries are not currently signed with an Authenticode certificate.
+Checksum verification in the installer reduces risk of tampering in transit but does not replace signing.
+
+== Current Implementation
+
+=== PasswordVault Storage
+
+Passphrases are stored as `Windows.Security.Credentials.PasswordCredential` objects.
+The resource name (cache key) is `pfwcache:<SETKEYINFO value>`.
+The user name is derived from `SETDESC` metadata, `SETKEYINFO`, or the current title, in that order.
+The password field holds the raw passphrase.
+
+`PasswordVault` applies DPAPI-based at-rest protection scoped to the Windows user account.
+Credentials are not accessible to other user accounts without privilege escalation.
+
+=== Windows Hello Cache-Read Gate
+
+Cache reads in `CredentialService.TryGetCachedAsync` are gated behind `UnlockWithWindowsHelloAsync`.
+
+The Hello flow:
+
+. Checks Windows Hello availability via `KeyCredentialManager.IsSupportedAsync`.
+. Opens or creates a Windows Hello key named `PinentryForWindows.CacheUnlock.v1` via `KeyCredentialManager.OpenOrCreateAsync`.
+. Generates 32 bytes of cryptographically random challenge data.
+. Requests the user sign the challenge via `KeyCredential.RequestSignAsync`, which triggers a biometric or PIN prompt.
+. Returns true only when `KeyCredentialStatus.Success` is received.
+
+This gate is enforced in application code.
+It protects the cache-read path through this application.
+It does not protect `PasswordVault` credentials from direct OS-level access by the same user.
+
+=== Cache Write Behavior
+
+Cache writes are not gated behind Windows Hello.
+After a successful `GETPIN` (non-repeat, non-mismatch), the entered passphrase is stored in `PasswordVault` if caching is enabled and a cache key is set.
+The rationale is that the user has just authenticated interactively.
+A Hello gate on write would add friction without additional security benefit at that point.
+
+=== Best-Effort Error Handling
+
+All cache operations catch and swallow exceptions.
+A `PasswordVault` error, a Windows Hello failure, a cancelled Hello prompt, or a cache miss each cause the same result: the application skips the cache and falls through to the normal credential prompt.
+No error is surfaced to the user or to `gpg-agent` for these conditions.
+
+== Fallback Behavior
+
+The following conditions all produce the same outcome: the cache is skipped and a normal interactive credential prompt is shown.
+
+[cols="2,3", options="header"]
+|===
+| Condition | Outcome
+
+| `OPTION allow-external-password-cache` not sent
+| Cache disabled for the session. No `PasswordVault` access attempted.
+
+| `SETKEYINFO` is empty or not set
+| No cache key available. Lookup and store both skipped.
+
+| `SETERROR` was sent before `GETPIN`
+| Cache lookup skipped for that `GETPIN` call. Normal prompt shown immediately.
+
+| Cache miss in `PasswordVault`
+| No cached credential found. Normal prompt shown.
+
+| Windows Hello unavailable (no TPM, no PIN, no biometric enrolled)
+| `IsSupportedAsync` returns false. Cache not served. Normal prompt shown.
+
+| Windows Hello cancelled by user
+| `RequestSignAsync` returns a non-success status. Cache not served. Normal prompt shown.
+
+| Windows Hello hardware or software error
+| Exception caught and swallowed. Cache not served. Normal prompt shown.
+
+| `PasswordVault` access error
+| Exception caught and swallowed. Cache not served. Normal prompt shown.
+
+| Repeat-passphrase mode active
+| Cache lookup unconditionally skipped. Passphrase must be entered twice.
+|===
+
+None of these conditions are fatal.
+Passphrase entry always proceeds.
+
+== Presence Gating vs Cryptographic Binding
+
+The current implementation uses **user-presence gating**: Windows Hello requires the user to confirm with biometric or PIN before the application reads the cached passphrase from `PasswordVault`.
+This gate is enforced in application code.
+
+The current implementation does **not** use **cryptographic binding**: the passphrase stored in `PasswordVault` is not encrypted with a key derived from or protected by the Windows Hello key.
+`PasswordVault` uses DPAPI at-rest encryption tied to the user account, but an attacker who reads `PasswordVault` directly (same-user process, administrator) does not need to pass Windows Hello to decrypt the value.
+
+The future target is cryptographic binding: encrypt the passphrase with a CNG key backed by the Windows Hello TPM key before storing it in `PasswordVault`.
+In that model, `PasswordVault` would hold ciphertext that is only decryptable by a key that itself requires Windows Hello attestation to use.
+Reading `PasswordVault` directly would yield useless ciphertext.
+
+== Known Limitations
+
+The following limitations are known and accepted in the current implementation.
+
+**Same-user process can bypass Hello gate.**
+Any process running as the current Windows user can open `PasswordVault` directly and retrieve the passphrase in plaintext without triggering Windows Hello.
+
+**Cache write is ungated.**
+Storing a passphrase in `PasswordVault` does not require Windows Hello.
+
+**No DPAPI NG or additional envelope encryption.**
+The passphrase stored in `PasswordVault` is DPAPI-protected to the user account but is not additionally encrypted.
+Cryptographic binding to the Hello key is not implemented.
+
+**Windows Hello key has no attestation requirement.**
+The `PinentryForWindows.CacheUnlock.v1` key is created without requiring a TPM or attestation.
+On machines without a TPM, the key may be software-backed.
+This does not affect the current threat model (presence gating, not cryptographic binding) but would matter for a future binding implementation.
+
+**Managed memory is not zeroed.**
+Passphrases are held in .NET `string` objects for the duration of the prompt and Assuan response.
+They are not pinned, not zeroed on release, and may persist in the managed heap until garbage collected.
+
+**RDP protection is incidental.**
+Cache suppression in RDP sessions is a side effect of Windows Hello being unavailable, not an explicit design guarantee.
+
+== Follow-up Tasks
+
+The following tasks would strengthen the cache security model.
+
+=== Cryptographic binding (high impact)
+
+Encrypt the passphrase before writing to `PasswordVault` using a CNG key backed by the Windows Hello TPM key.
+Decryption would require Windows Hello attestation, making direct `PasswordVault` access useless without the Hello key.
+This would require a `v2` key name and a migration path for existing cached credentials.
+
+=== Gate cache write behind Hello
+
+Require a Windows Hello confirmation before storing a passphrase in `PasswordVault`.
+Currently the write is ungated because the user just authenticated interactively, but adding a gate would make the write explicit and auditable.
+
+=== Secure in-process passphrase memory
+
+Investigate pinning passphrase values using `GCHandle.Alloc(pin: true)` and overwriting the memory after use.
+This is limited by .NET's lack of a guaranteed `SecureString`-equivalent for AOT-compiled native executables, but even partial mitigation reduces the window for memory inspection.
+
+=== Attestation requirement on Hello key
+
+Create the Hello key with a `KeyCredentialCreationOption` that requires TPM attestation where available.
+This limits the value of the key on machines without a real TPM but strengthens the binding guarantee on machines that do.
+
+=== Authenticode binary signing
+
+Sign published executables with an Authenticode certificate to complement the existing checksum verification in the installer.
+Signing provides publisher identity and helps Windows Defender and SmartScreen treat the binary as trusted.

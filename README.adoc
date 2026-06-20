@@ -271,6 +271,8 @@ Cache cleanup uses `CLEARPASSPHRASE <key>` and removes `pfwcache:<key>`.
 Windows Hello is best-effort.
 If it is unavailable, cancelled, or fails, `GETPIN` falls back to a normal credential prompt.
 
+The threat model, security goals, non-goals, known limitations, and follow-up hardening tasks are documented in link:docs/security-model.adoc[docs/security-model.adoc].
+
 == Smart Card And Metadata Parsing
 
 `SETDESC` recognizes metadata commonly sent by GnuPG and smart card flows.
