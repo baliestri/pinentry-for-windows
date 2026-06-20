@@ -141,4 +141,34 @@ internal sealed class CredentialService : ICredentialService {
 
     return result.Password;
   }
+
+  private static PromptResult? PromptWithNativeCredentialDialogWithSave(string title, string message, string lockedUserName) {
+    var options = new CredentialManager.PromptForWindowsCredentialsOptions(title, message) {
+      IsSaveChecked = false,
+      Flags = CredentialManager.PromptForWindowsCredentialsFlag.CredUiWinGeneric |
+              CredentialManager.PromptForWindowsCredentialsFlag.CredUiWinInCredOnly |
+              CredentialManager.PromptForWindowsCredentialsFlag.CredUiWinCheckbox
+    };
+
+    var result = CredentialManager.PromptForWindowsCredentials(options, lockedUserName, string.Empty);
+    if (result is null ||
+        string.IsNullOrWhiteSpace(result.Password)) {
+      return null;
+    }
+
+    if (!string.Equals(result.UserName, lockedUserName, StringComparison.OrdinalIgnoreCase)) {
+      return null;
+    }
+
+    return new PromptResult(result.Password, result.IsSaveChecked);
+  }
+
+  /// <inheritdoc />
+  public async Task<PromptResult?> PromptWithSaveCheckboxAsync(string title, string message, string userName, CancellationToken ct = default) {
+    if (ct.IsCancellationRequested) {
+      return null;
+    }
+
+    return await Task.Run(() => PromptWithNativeCredentialDialogWithSave(title, message, userName), ct);
+  }
 }

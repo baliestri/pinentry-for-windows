@@ -165,6 +165,7 @@ internal static class CredentialManager {
   [Flags]
   public enum PromptForWindowsCredentialsFlag {
     CredUiWinGeneric = 0x00000001,
+    CredUiWinCheckbox = 0x00000004,
     CredUiWinInCredOnly = 0x00000020
   }
 
