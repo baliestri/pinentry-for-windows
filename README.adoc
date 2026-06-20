@@ -45,6 +45,7 @@ Examples:
 * External passphrase cache support through Windows `PasswordVault` when GnuPG sends `OPTION allow-external-password-cache`.
 * Windows Hello gate for reading cached passphrases through `KeyCredentialManager`.
 * Best-effort cache behavior: cache read/store failures never prevent a normal prompt fallback.
+* User-controlled cache opt-in via a "Remember my credentials" checkbox, enabled through a local settings file.
 * Assuan payload logging with redaction enabled.
 * Diagnostic log file at `%LOCALAPPDATA%\PinentryForWindows\pinentry.log`.
 * Smart card description cleanup and cache-user extraction from `SETDESC` values.
@@ -273,6 +274,40 @@ If it is unavailable, cancelled, or fails, `GETPIN` falls back to a normal crede
 
 The threat model, security goals, non-goals, known limitations, and follow-up hardening tasks are documented in link:docs/security-model.adoc[docs/security-model.adoc].
 GPG key identity sources, cache key construction, and display label rules are documented in link:docs/gpg-agent-key-identity.adoc[docs/gpg-agent-key-identity.adoc].
+
+== User Cache Opt-In
+
+By default, passphrase caching is controlled entirely by `gpg-agent` via `OPTION allow-external-password-cache`.
+When user cache opt-in is enabled, the passphrase prompt includes a native "Remember my credentials" checkbox.
+Checking the checkbox stores the passphrase in Windows `PasswordVault` using the same DPAPI-encrypted, Windows Hello-gated path as the standard cache.
+
+User cache opt-in is disabled by default and must be explicitly enabled.
+To enable it, create:
+
+[source,text]
+----
+%LOCALAPPDATA%\PinentryForWindows\settings.json
+----
+
+with the following content:
+
+[source,json]
+----
+{
+  "AllowUserCacheOptIn": true
+}
+----
+
+When enabled:
+
+* If a stable cache key is known (`SETKEYINFO` was sent), the prompt shows a "Remember my credentials" checkbox.
+* Checking the checkbox stores the passphrase in `PasswordVault` after the prompt succeeds.
+* Unchecking the checkbox (or leaving it unchecked) does not store the passphrase, regardless of `gpg-agent` settings.
+* Repeat-passphrase prompts never show the checkbox.
+* The checkbox does not appear when no cache key is available.
+
+The stored passphrase is protected identically to the standard cache path: DPAPI-encrypted at rest and gated by Windows Hello on the next cache read.
+Cache entries written by opt-in and by `gpg-agent`-managed caching share the same storage and are cleared by `CLEARPASSPHRASE`.
 
 == Smart Card And Metadata Parsing
 
