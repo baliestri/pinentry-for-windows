@@ -1,6 +1,7 @@
 // Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
 // See the LICENSE file in the repository root for full license text.
 
+using PinentryForWindows.Configuration;
 using PinentryForWindows.Runtime;
 
 namespace PinentryForWindows.Tests.TestSupport;
@@ -23,6 +24,7 @@ internal sealed class SessionStateScope : IDisposable {
   public static void Reset() {
     SessionState.Reset();
     InteractivePromptCoordinator.Clear();
+    AppConfiguration.AllowUserCacheOptIn = false;
   }
 
   private sealed record Snapshot(
@@ -44,6 +46,7 @@ internal sealed class SessionStateScope : IDisposable {
     string RepeatDescription,
     string RepeatError,
     bool GrabKeyboard,
+    bool AllowUserCacheOptIn,
     InteractiveCommandSignal? PromptSignal) {
     public static Snapshot Capture()
       => new(
@@ -65,6 +68,7 @@ internal sealed class SessionStateScope : IDisposable {
         SessionState.RepeatDescription,
         SessionState.RepeatError,
         SessionState.GrabKeyboard,
+        AppConfiguration.AllowUserCacheOptIn,
         InteractivePromptCoordinator.Current);
 
     public void Apply() {
@@ -86,6 +90,7 @@ internal sealed class SessionStateScope : IDisposable {
       SessionState.RepeatDescription = RepeatDescription;
       SessionState.RepeatError = RepeatError;
       SessionState.GrabKeyboard = GrabKeyboard;
+      AppConfiguration.AllowUserCacheOptIn = AllowUserCacheOptIn;
       InteractivePromptCoordinator.Restore(PromptSignal);
     }
   }

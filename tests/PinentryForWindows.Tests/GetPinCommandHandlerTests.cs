@@ -3,6 +3,7 @@
 
 using Moq;
 using PinentryForWindows.Commands;
+using PinentryForWindows.Configuration;
 using PinentryForWindows.Runtime;
 using PinentryForWindows.Services;
 using PinentryForWindows.Tests.TestSupport;
@@ -234,6 +235,93 @@ public sealed class GetPinCommandHandlerTests {
     var context = await new GetPinCommandHandler(credentials.Object, dialogs.Object).InvokeAsync("GETPIN");
 
     context.ShouldHaveSingleError(ExitCode.CANCELLED);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task User_cache_opt_in_checked_stores_passphrase() {
+    using var _ = SessionStateScope.Create();
+    AppConfiguration.AllowUserCacheOptIn = true;
+    SessionState.KeyInfo = "n/AABBCCDDEE1122334455667788990011AABBCCDD";
+    SessionState.Description = "Enter PIN";
+
+    var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
+    credentials
+      .Setup(service => service.PromptWithSaveCheckboxAsync("Pinentry for Windows", "Enter PIN",
+        "n/AABBCCDDEE1122334455667788990011AABBCCDD", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new PromptResult("secret", SaveChecked: true));
+    credentials.Setup(service => service.StoreAsync(
+        "pfwcache:n/AABBCCDDEE1122334455667788990011AABBCCDD",
+        "n/AABBCCDDEE1122334455667788990011AABBCCDD",
+        "secret",
+        It.IsAny<CancellationToken>()))
+      .Returns(Task.CompletedTask);
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+
+    var context = await new GetPinCommandHandler(credentials.Object, dialogs.Object).InvokeAsync("GETPIN");
+
+    context.TextLines().ShouldBe(["D secret", "OK"]);
+    credentials.VerifyAll();
+  }
+
+  [Fact]
+  public async Task User_cache_opt_in_unchecked_does_not_store_passphrase() {
+    using var _ = SessionStateScope.Create();
+    AppConfiguration.AllowUserCacheOptIn = true;
+    SessionState.KeyInfo = "n/AABBCCDDEE1122334455667788990011AABBCCDD";
+    SessionState.Description = "Enter PIN";
+
+    var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
+    credentials
+      .Setup(service => service.PromptWithSaveCheckboxAsync("Pinentry for Windows", "Enter PIN",
+        "n/AABBCCDDEE1122334455667788990011AABBCCDD", It.IsAny<CancellationToken>()))
+      .ReturnsAsync(new PromptResult("secret", SaveChecked: false));
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+
+    var context = await new GetPinCommandHandler(credentials.Object, dialogs.Object).InvokeAsync("GETPIN");
+
+    context.TextLines().ShouldBe(["D secret", "OK"]);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task User_cache_opt_in_without_cache_key_uses_regular_prompt() {
+    using var _ = SessionStateScope.Create();
+    AppConfiguration.AllowUserCacheOptIn = true;
+
+    var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
+    credentials
+      .Setup(service => service.PromptAsync("Pinentry for Windows", "Enter password for GPG key", "Pinentry for Windows", It.IsAny<CancellationToken>()))
+      .ReturnsAsync("secret");
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+
+    var context = await new GetPinCommandHandler(credentials.Object, dialogs.Object).InvokeAsync("GETPIN");
+
+    context.TextLines().ShouldBe(["D secret", "OK"]);
+    credentials.Verify(service => service.PromptWithSaveCheckboxAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+  }
+
+  [Fact]
+  public async Task User_cache_opt_in_in_repeat_mode_uses_regular_prompt() {
+    using var _ = SessionStateScope.Create();
+    AppConfiguration.AllowUserCacheOptIn = true;
+    SessionState.KeyInfo = "n/AABBCCDDEE1122334455667788990011AABBCCDD";
+    SessionState.RepeatPassphrase = true;
+    SessionState.RepeatDescription = "Repeat PIN";
+
+    var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
+    credentials
+      .SetupSequence(service => service.PromptAsync(It.IsAny<string>(), It.IsAny<string>(),
+        "n/AABBCCDDEE1122334455667788990011AABBCCDD", It.IsAny<CancellationToken>()))
+      .ReturnsAsync("secret")
+      .ReturnsAsync("secret");
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+
+    var context = await new GetPinCommandHandler(credentials.Object, dialogs.Object).InvokeAsync("GETPIN");
+
+    context.TextLines().ShouldBe(["S PIN_REPEATED", "D secret", "OK"]);
+    credentials.Verify(service => service.PromptWithSaveCheckboxAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
   }
 }
