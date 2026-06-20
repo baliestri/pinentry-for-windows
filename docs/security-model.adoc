@@ -123,10 +123,21 @@ Checksum verification in the installer reduces risk of tampering in transit but 
 Passphrases are stored as `Windows.Security.Credentials.PasswordCredential` objects.
 The resource name (cache key) is `pfwcache:<SETKEYINFO value>`.
 The user name is derived from `SETDESC` metadata, `SETKEYINFO`, or the current title, in that order.
-The password field holds the raw passphrase.
 
-`PasswordVault` applies DPAPI-based at-rest protection scoped to the Windows user account.
+The password field holds a DPAPI-encrypted blob, not the raw passphrase.
+Before writing to `PasswordVault`, the passphrase is encrypted with `ProtectedData.Protect` (`DataProtectionScope.CurrentUser`) using the cache key bytes as optional entropy for domain separation.
+The stored value takes the form `pfwv2:<base64(dpapi_blob)>`.
+A blob protected for one cache key cannot be DPAPI-unprotected with a different cache key.
+
+This means `PasswordVault` never contains a directly readable passphrase.
+A caller who retrieves the password field via the `PasswordVault` API receives opaque ciphertext.
+
+`PasswordVault` additionally applies its own DPAPI-based at-rest protection scoped to the Windows user account.
 Credentials are not accessible to other user accounts without privilege escalation.
+
+Entries written by earlier versions of this application stored the passphrase as plaintext (no `pfwv2:` prefix).
+When a legacy entry is encountered during a cache read, it is silently removed from `PasswordVault` and the read returns a cache miss.
+The user enters the passphrase once through the normal prompt, and the new encrypted entry is written.
 
 === Windows Hello Cache-Read Gate
 
@@ -189,6 +200,12 @@ The following conditions all produce the same outcome: the cache is skipped and 
 | `PasswordVault` access error
 | Exception caught and swallowed. Cache not served. Normal prompt shown.
 
+| Stored value has no `pfwv2:` prefix (legacy plaintext entry)
+| Entry removed from `PasswordVault`. Cache miss returned. Normal prompt shown. New encrypted entry written after prompt.
+
+| Stored value has `pfwv2:` prefix but DPAPI decryption fails (corrupt or wrong entropy)
+| `TryUnprotect` returns null. Cache miss returned. Normal prompt shown.
+
 | Repeat-passphrase mode active
 | Cache lookup unconditionally skipped. Passphrase must be entered twice.
 |===
@@ -201,26 +218,27 @@ Passphrase entry always proceeds.
 The current implementation uses **user-presence gating**: Windows Hello requires the user to confirm with biometric or PIN before the application reads the cached passphrase from `PasswordVault`.
 This gate is enforced in application code.
 
-The current implementation does **not** use **cryptographic binding**: the passphrase stored in `PasswordVault` is not encrypted with a key derived from or protected by the Windows Hello key.
-`PasswordVault` uses DPAPI at-rest encryption tied to the user account, but an attacker who reads `PasswordVault` directly (same-user process, administrator) does not need to pass Windows Hello to decrypt the value.
+The current implementation adds a **DPAPI envelope** layer: the passphrase is encrypted with `ProtectedData.Protect` before being stored in `PasswordVault`.
+The `PasswordVault` password field now holds opaque ciphertext rather than the passphrase in plaintext.
+This prevents off-disk PasswordVault store dumps and casual inspection of the stored value from revealing the passphrase.
 
-The future target is cryptographic binding: encrypt the passphrase with a CNG key backed by the Windows Hello TPM key before storing it in `PasswordVault`.
-In that model, `PasswordVault` would hold ciphertext that is only decryptable by a key that itself requires Windows Hello attestation to use.
-Reading `PasswordVault` directly would yield useless ciphertext.
+However, the DPAPI envelope is user-account scoped — the same boundary as `PasswordVault` itself.
+A same-user process can still call `ProtectedData.Unprotect` and retrieve the plaintext.
+The implementation does **not** use **cryptographic binding**: the DPAPI key is not derived from or protected by the Windows Hello key.
+
+The future target is true cryptographic binding: encrypt the passphrase using a CNG key backed by the Windows Hello TPM key (via `NCryptProtectSecret` or an export-protected key with `NCRYPT_UI_POLICY`).
+In that model, decryption would require Windows Hello attestation at the OS level, making the stored blob useless to a same-user process that bypasses this application.
 
 == Known Limitations
 
 The following limitations are known and accepted in the current implementation.
 
 **Same-user process can bypass Hello gate.**
-Any process running as the current Windows user can open `PasswordVault` directly and retrieve the passphrase in plaintext without triggering Windows Hello.
+Any process running as the current Windows user can open `PasswordVault` directly, retrieve the `pfwv2:` ciphertext, and DPAPI-decrypt it without triggering Windows Hello.
+The DPAPI envelope makes the stored value opaque to off-disk inspection but does not add a new security boundary against in-session same-user access.
 
 **Cache write is ungated.**
 Storing a passphrase in `PasswordVault` does not require Windows Hello.
-
-**No DPAPI NG or additional envelope encryption.**
-The passphrase stored in `PasswordVault` is DPAPI-protected to the user account but is not additionally encrypted.
-Cryptographic binding to the Hello key is not implemented.
 
 **Windows Hello key has no attestation requirement.**
 The `PinentryForWindows.CacheUnlock.v1` key is created without requiring a TPM or attestation.
@@ -238,11 +256,11 @@ Cache suppression in RDP sessions is a side effect of Windows Hello being unavai
 
 The following tasks would strengthen the cache security model.
 
-=== Cryptographic binding (high impact)
+=== NCrypt / Hello cryptographic binding (high impact)
 
-Encrypt the passphrase before writing to `PasswordVault` using a CNG key backed by the Windows Hello TPM key.
-Decryption would require Windows Hello attestation, making direct `PasswordVault` access useless without the Hello key.
-This would require a `v2` key name and a migration path for existing cached credentials.
+Encrypt the passphrase using a CNG key backed by the Windows Hello TPM key (via `NCryptProtectSecret` or an export-protected key with `NCRYPT_UI_POLICY` requiring Hello authorization).
+In this model, decryption would require Windows Hello attestation at the OS level rather than in application code, making the stored blob useless to a same-user process that bypasses this application.
+This would require a new key name version and a migration path for existing `pfwv2:` entries.
 
 === Gate cache write behind Hello
 
