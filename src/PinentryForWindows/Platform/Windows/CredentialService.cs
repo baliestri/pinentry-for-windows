@@ -37,7 +37,18 @@ internal sealed class CredentialService : ICredentialService {
       var credential = credentials[0];
       credential.RetrievePassword();
 
-      return string.IsNullOrWhiteSpace(credential.Password) ? null : credential.Password;
+      var stored = credential.Password;
+      if (string.IsNullOrWhiteSpace(stored)) {
+        return null;
+      }
+
+      // Legacy plaintext entry (pre-v2, no pfwv2: prefix): remove it and treat as cache miss.
+      if (!stored.StartsWith("pfwv2:", StringComparison.Ordinal)) {
+        RemoveFromPasswordVault(vault, cacheKey);
+        return null;
+      }
+
+      return CacheEntryProtector.TryUnprotect(stored, cacheKey);
     }
     catch {
       // Ignore any errors during retrieval
@@ -49,7 +60,7 @@ internal sealed class CredentialService : ICredentialService {
   public Task StoreAsync(string cacheKey, string userName, string password, CancellationToken ct = default) {
     var vault = new PasswordVault();
     RemoveFromPasswordVault(vault, cacheKey);
-    vault.Add(new PasswordCredential(cacheKey, userName, password));
+    vault.Add(new PasswordCredential(cacheKey, userName, CacheEntryProtector.Protect(password, cacheKey)));
 
     return Task.CompletedTask;
   }
