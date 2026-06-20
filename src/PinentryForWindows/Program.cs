@@ -5,9 +5,12 @@ using AssuanLibrary.Client;
 using AssuanLibrary.Logging;
 using AssuanLibrary.Server;
 using PinentryForWindows.Commands;
+using PinentryForWindows.Configuration;
 using PinentryForWindows.Logging;
 using PinentryForWindows.Transport;
 using PinentryForWindows.Transport.Endpoints;
+
+AppConfiguration.Load();
 
 using var cts = new CancellationTokenSource();
 

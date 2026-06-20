@@ -5,6 +5,7 @@ using System.Text;
 using AssuanLibrary.Protocol;
 using AssuanLibrary.Protocol.Abstractions;
 using AssuanLibrary.Server.Abstractions;
+using PinentryForWindows.Configuration;
 using PinentryForWindows.Platform.Windows;
 using PinentryForWindows.Runtime;
 using PinentryForWindows.Services;
@@ -55,19 +56,44 @@ internal sealed class GetPinCommandHandler(ICredentialService credentialService,
 
     var promptMessage = BuildPromptMessage(SessionState.Description, pinError);
 
+    var showSaveCheckbox = AppConfiguration.AllowUserCacheOptIn &&
+                           !SessionState.RepeatPassphrase &&
+                           !string.IsNullOrWhiteSpace(cacheKey);
+
     var promptSignal = InteractivePromptCoordinator.Begin();
 
     try {
-      var password = await credentialService.PromptAsync(
-        SessionState.Title,
-        promptMessage,
-        credentialUser,
-        serverContext.Session.CancellationToken);
+      string? password;
+      var userOptedIn = false;
 
-      if (password is null) {
-        var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
-        await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
-        return;
+      if (showSaveCheckbox) {
+        var result = await credentialService.PromptWithSaveCheckboxAsync(
+          SessionState.Title,
+          promptMessage,
+          credentialUser,
+          serverContext.Session.CancellationToken);
+
+        if (result is null) {
+          var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
+          await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
+          return;
+        }
+
+        password = result.Password;
+        userOptedIn = result.SaveChecked;
+      }
+      else {
+        password = await credentialService.PromptAsync(
+          SessionState.Title,
+          promptMessage,
+          credentialUser,
+          serverContext.Session.CancellationToken);
+
+        if (password is null) {
+          var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
+          await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
+          return;
+        }
       }
 
       if (SessionState.RepeatPassphrase) {
@@ -103,7 +129,7 @@ internal sealed class GetPinCommandHandler(ICredentialService credentialService,
         await serverContext.SendResponseAsync(responseCollection, serverContext.Session.CancellationToken);
       }
 
-      if (SessionState.ExternalPassphraseCache &&
+      if ((SessionState.ExternalPassphraseCache || userOptedIn) &&
           !string.IsNullOrWhiteSpace(cacheKey)) {
         try {
           await credentialService.StoreAsync(cacheKey, credentialUser, password);
