@@ -527,11 +527,4 @@ FodyWeavers.xsd
 # Additional files built by Visual Studio
 build/
 
-### Docker ###
-containers/
-
-publish/
-publish.zip
-playwright.zip
-.env
-.docker/*-data/
+tasks/
