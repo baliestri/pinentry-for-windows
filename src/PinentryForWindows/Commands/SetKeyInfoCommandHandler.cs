@@ -1,13 +1,14 @@
 // Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
 // See the LICENSE file in the repository root for full license text.
 
+using System.Text.RegularExpressions;
 using AssuanLibrary.Protocol;
 using AssuanLibrary.Protocol.Abstractions;
 using AssuanLibrary.Server.Abstractions;
 
 namespace PinentryForWindows.Commands;
 
-internal sealed class SetKeyInfoCommandHandler : CommandHandler {
+internal sealed partial class SetKeyInfoCommandHandler : CommandHandler {
   /// <inheritdoc />
   public override string Name => "SETKEYINFO";
 
@@ -22,13 +23,26 @@ internal sealed class SetKeyInfoCommandHandler : CommandHandler {
     switch (command.Arguments[0]) {
       case "--clear": {
         SessionState.KeyInfo = string.Empty;
+        SessionState.KeyInfoType = string.Empty;
+        SessionState.KeyGrip = string.Empty;
 
         var response = AssuanResponse.Ok();
         await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
         return;
       }
       default: {
-        SessionState.KeyInfo = command.Arguments[0];
+        var argument = command.Arguments[0];
+        SessionState.KeyInfo = argument;
+
+        var match = KeyInfoFormatRegex().Match(argument);
+        if (match.Success) {
+          SessionState.KeyInfoType = match.Groups[1].Value;
+          SessionState.KeyGrip = match.Groups[2].Value.ToUpperInvariant();
+        }
+        else {
+          SessionState.KeyInfoType = string.Empty;
+          SessionState.KeyGrip = string.Empty;
+        }
 
         var response = AssuanResponse.Ok();
         await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
@@ -36,4 +50,9 @@ internal sealed class SetKeyInfoCommandHandler : CommandHandler {
       }
     }
   }
+
+  // Matches the gpg-agent SETKEYINFO format: X/[40-hex-keygrip]
+  // X is the key type: n = OpenPGP, s = SSH, u = other/unspecified
+  [GeneratedRegex("^([nsu])/([0-9A-Fa-f]{40})$", RegexOptions.Compiled | RegexOptions.Singleline)]
+  private static partial Regex KeyInfoFormatRegex();
 }

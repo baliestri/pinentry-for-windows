@@ -223,6 +223,93 @@ public sealed class GpgAgentCompatibilityTests {
     dialogs.VerifyAll();
   }
 
+  [Fact]
+  public async Task Decrypt_with_prefixed_keygrip_uses_full_setkeyinfo_value_as_cache_key() {
+    using var _ = SessionStateScope.Create();
+    const string KEYGRIP = "1234567890ABCDEF1234567890ABCDEF12345678";
+    const string KEY_INFO = "n/" + KEYGRIP;
+
+    var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
+    credentials.Setup(service => service.TryGetCachedAsync("pfwcache:" + KEY_INFO, It.IsAny<CancellationToken>()))
+      .ReturnsAsync((string?)null);
+    credentials.Setup(service => service.PromptAsync("Pinentry", It.IsAny<string>(), "ABCDEF1234567890", It.IsAny<CancellationToken>()))
+      .ReturnsAsync("decrypt-passphrase");
+    credentials.Setup(service => service.StoreAsync("pfwcache:" + KEY_INFO, "ABCDEF1234567890", "decrypt-passphrase", It.IsAny<CancellationToken>()))
+      .Returns(Task.CompletedTask);
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+    var replay = new GpgAgentReplay(credentials.Object, dialogs.Object);
+
+    await replay.SendOkAsync("OPTION allow-external-password-cache");
+    await replay.SendOkAsync("SETTITLE Pinentry");
+    await replay.SendOkAsync("SETDESC Please enter the passphrase to unlock the OpenPGP secret key:%0A%22Test User <test@example.invalid>%22%0A2048-bit RSA key, ID ABCDEF1234567890.");
+    await replay.SendOkAsync("SETKEYINFO " + KEY_INFO);
+
+    var getPin = await replay.SendAsync("GETPIN");
+
+    getPin.TextLines().ShouldBe(["D decrypt-passphrase", "OK"]);
+    SessionState.KeyInfo.ShouldBe(KEY_INFO);
+    SessionState.KeyInfoType.ShouldBe("n");
+    SessionState.KeyGrip.ShouldBe(KEYGRIP);
+    SessionState.CacheUser.ShouldBe("ABCDEF1234567890");
+    credentials.VerifyAll();
+  }
+
+  [Fact]
+  public async Task Ssh_auth_with_s_prefixed_keygrip_uses_full_setkeyinfo_value_as_cache_key() {
+    using var _ = SessionStateScope.Create();
+    const string KEYGRIP = "FEDCBA9876543210FEDCBA9876543210FEDCBA98";
+    const string KEY_INFO = "s/" + KEYGRIP;
+
+    var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
+    credentials.Setup(service => service.TryGetCachedAsync("pfwcache:" + KEY_INFO, It.IsAny<CancellationToken>()))
+      .ReturnsAsync((string?)null);
+    credentials.Setup(service => service.PromptAsync("Pinentry", It.IsAny<string>(), KEY_INFO, It.IsAny<CancellationToken>()))
+      .ReturnsAsync("ssh-passphrase");
+    credentials.Setup(service => service.StoreAsync("pfwcache:" + KEY_INFO, KEY_INFO, "ssh-passphrase", It.IsAny<CancellationToken>()))
+      .Returns(Task.CompletedTask);
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+    var replay = new GpgAgentReplay(credentials.Object, dialogs.Object);
+
+    await replay.SendOkAsync("OPTION allow-external-password-cache");
+    await replay.SendOkAsync("SETTITLE Pinentry");
+    await replay.SendOkAsync("SETDESC Please enter the passphrase to unlock the SSH key");
+    await replay.SendOkAsync("SETKEYINFO " + KEY_INFO);
+
+    var getPin = await replay.SendAsync("GETPIN");
+
+    getPin.TextLines().ShouldBe(["D ssh-passphrase", "OK"]);
+    SessionState.KeyInfo.ShouldBe(KEY_INFO);
+    SessionState.KeyInfoType.ShouldBe("s");
+    SessionState.KeyGrip.ShouldBe(KEYGRIP);
+    credentials.VerifyAll();
+  }
+
+  [Fact]
+  public async Task Setkeyinfo_clear_clears_all_key_identity_state_and_skips_cache_lookup() {
+    using var _ = SessionStateScope.Create();
+
+    var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
+    credentials.Setup(service => service.PromptAsync("Pinentry", It.IsAny<string>(), "Pinentry", It.IsAny<CancellationToken>()))
+      .ReturnsAsync("passphrase");
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+    var replay = new GpgAgentReplay(credentials.Object, dialogs.Object);
+
+    await replay.SendOkAsync("OPTION allow-external-password-cache");
+    await replay.SendOkAsync("SETTITLE Pinentry");
+    await replay.SendOkAsync("SETKEYINFO n/AABBCCDDEEFF00112233445566778899AABBCCDD");
+    await replay.SendOkAsync("SETDESC Please enter the passphrase");
+    await replay.SendOkAsync("SETKEYINFO --clear");
+
+    var getPin = await replay.SendAsync("GETPIN");
+
+    getPin.TextLines().ShouldBe(["D passphrase", "OK"]);
+    SessionState.KeyInfo.ShouldBeEmpty();
+    SessionState.KeyInfoType.ShouldBeEmpty();
+    SessionState.KeyGrip.ShouldBeEmpty();
+    credentials.Verify(service => service.TryGetCachedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    credentials.VerifyAll();
+  }
+
   private sealed class GpgAgentReplay(ICredentialService credentialService, IDialogService dialogService) {
     public async Task<RecordingServerContext> SendAsync(string commandLine) {
       var handler = CreateHandler(commandLine);
