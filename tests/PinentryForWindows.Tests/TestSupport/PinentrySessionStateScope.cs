@@ -32,6 +32,8 @@ internal sealed class SessionStateScope : IDisposable {
     string CachePrefix,
     string CacheUser,
     string KeyInfo,
+    string KeyInfoType,
+    string KeyGrip,
     string OkButtonText,
     string CancelButtonText,
     string NotOkButtonText,
@@ -51,6 +53,8 @@ internal sealed class SessionStateScope : IDisposable {
         SessionState.CachePrefix,
         SessionState.CacheUser,
         SessionState.KeyInfo,
+        SessionState.KeyInfoType,
+        SessionState.KeyGrip,
         SessionState.OkButtonText,
         SessionState.CancelButtonText,
         SessionState.NotOkButtonText,
@@ -70,6 +74,8 @@ internal sealed class SessionStateScope : IDisposable {
       SessionState.CachePrefix = CachePrefix;
       SessionState.CacheUser = CacheUser;
       SessionState.KeyInfo = KeyInfo;
+      SessionState.KeyInfoType = KeyInfoType;
+      SessionState.KeyGrip = KeyGrip;
       SessionState.OkButtonText = OkButtonText;
       SessionState.CancelButtonText = CancelButtonText;
       SessionState.NotOkButtonText = NotOkButtonText;

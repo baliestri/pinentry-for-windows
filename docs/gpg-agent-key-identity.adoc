@@ -1,0 +1,190 @@
+= GPG Key Identity
+
+This document describes the GPG key identifiers available to Pinentry For Windows, how they are used for cache keys and display labels, and what information pinentry cannot obtain from the Assuan protocol.
+
+== Identifiers Available to Pinentry
+
+GnuPG's `gpg-agent` sends two commands that carry key identity information before a `GETPIN` request.
+
+[cols="1,1,2,2", options="header"]
+|===
+| Identifier | Source | Format | Used for
+
+| Keygrip
+| `SETKEYINFO` value after `/`
+| 40 hexadecimal characters (SHA-1 hash of key parameters)
+| Cache key (primary identifier)
+
+| Key type prefix
+| `SETKEYINFO` value before `/`
+| Single character: `n`, `s`, or `u`
+| Key context (OpenPGP vs SSH vs other)
+
+| Long key ID
+| `SETDESC` text, extracted by `ID [hex]` pattern
+| 16 hexadecimal characters (last 8 bytes of fingerprint)
+| Display label in credential prompt
+
+| Smart card metadata
+| `SETDESC` text, `Number:` and `Holder:` lines
+| Free text
+| Display label in credential prompt for card operations
+
+| Full fingerprint
+| Not available
+| Not sent to pinentry
+| n/a
+|===
+
+== SETKEYINFO Format
+
+`gpg-agent` sends the key identity with:
+
+[source,text]
+----
+SETKEYINFO X/HEXSTRING
+----
+
+Where `X` is a single character indicating the key context and `HEXSTRING` is the 40-character hexadecimal keygrip.
+
+Key type values:
+
+[cols="1,3", options="header"]
+|===
+| Prefix | Context
+
+| `n`
+| Normal OpenPGP key (signing, decryption, certification)
+
+| `s`
+| SSH authentication key (when `gpg-agent` acts as an SSH agent)
+
+| `u`
+| Other or unspecified key type
+|===
+
+Example: `SETKEYINFO n/FD692BD59D6640A84C8422573D469F84F3B98E53`
+
+When `gpg-agent` instructs pinentry not to cache (for example, when the `ignore-cache-for-signing` option is set, or when a smart card handles authentication internally), it sends:
+
+[source,text]
+----
+SETKEYINFO --clear
+----
+
+This clears the key info, type, and keygrip from session state.
+A `GETPIN` that follows with no `SETKEYINFO` set skips all cache lookup and store.
+
+=== Keygrip Definition
+
+The keygrip is a protocol-independent identifier for a key pair.
+It is computed as a SHA-1 hash of the public key parameters using algorithm-specific formatting defined by libgcrypt.
+Key properties:
+
+* Same physical key (same RSA modulus or same EC point) always produces the same keygrip.
+* Independent of OpenPGP format version, user IDs, expiry, or other metadata.
+* Stable across protocols: the same key used for OpenPGP signing and SSH authentication has the same keygrip but different type prefixes (`n/` vs `s/`).
+* Collision-resistant for practical purposes (40 hex characters = 160-bit hash).
+* A user can retrieve their keygrips with `gpg2 --with-keygrip --list-secret-keys`.
+
+=== Legacy Values
+
+Earlier versions of some pinentry implementations and test fixtures may send `SETKEYINFO` with a raw keygrip (no type prefix), an arbitrary string identifier such as `card-keygrip-1`, or another opaque value.
+These values are accepted and stored in `SessionState.KeyInfo` without error.
+In these cases `SessionState.KeyInfoType` and `SessionState.KeyGrip` are left empty.
+Cache key construction still works because it uses the raw `KeyInfo` value.
+
+== SETDESC Key ID Extraction
+
+`gpg-agent` includes a human-readable description in `SETDESC`.
+For regular key operations, the description typically contains the long key ID in the form `ID HEXSTRING`, where `HEXSTRING` is 16 hexadecimal characters.
+
+Example SETDESC value (URL-encoded newlines):
+[source,text]
+----
+Please enter the passphrase to unlock the OpenPGP secret key:
+"John Doe <john@example.com>"
+2048-bit RSA key, ID ABCDEF1234567890,
+created 2025-01-01.
+----
+
+The `ID ABCDEF1234567890` pattern is extracted by `SetDescriptionCommandHandler` (via `KeyIdRegex`) and stored as `SessionState.CacheUser`.
+This is the long key ID: the last 8 bytes of the OpenPGP v4 fingerprint.
+
+The long key ID (16 hex chars) is suitable for display.
+It is not used as the cache key — the cache key uses the full `SETKEYINFO` value (keygrip with type prefix), which is more stable and collision-resistant.
+
+Short key IDs (8 hex chars) are deliberately not extracted.
+They are not collision-resistant and should not be used as identifiers.
+
+== Cache Key Construction
+
+Cache keys are constructed as:
+
+[source,text]
+----
+pfwcache:<SETKEYINFO value>
+----
+
+Examples:
+
+* Regular OpenPGP key: `pfwcache:n/FD692BD59D6640A84C8422573D469F84F3B98E53`
+* SSH key: `pfwcache:s/FEDCBA9876543210FEDCBA9876543210FEDCBA98`
+* Legacy or opaque value: `pfwcache:card-keygrip-1`
+
+The type prefix is included in the cache key deliberately.
+An SSH authentication operation and an OpenPGP signing operation that use the same underlying key material have different type prefixes and therefore separate cache entries.
+This reflects the fact that they are different security contexts with potentially different passphrase protection expectations.
+
+If `SETKEYINFO` was not sent, or `SETKEYINFO --clear` was received, `SessionState.KeyInfo` is empty and no cache lookup or store is attempted.
+
+== Display Label Priority
+
+The credential user shown in the Windows credential UI is chosen in this order:
+
+. `SessionState.CacheUser` — set by `SETDESC` parsing (long key ID, smart card holder name, or MAC-like value)
+. `SessionState.KeyInfo` — the raw `SETKEYINFO` value if no structured metadata was extracted
+. `SessionState.Title` — the prompt title as last resort
+
+== Flows by Operation
+
+[cols="2,1,3", options="header"]
+|===
+| Operation | SETKEYINFO prefix | Notes
+
+| OpenPGP signing
+| `n/[keygrip]`
+| Uses signing subkey keygrip
+
+| OpenPGP decryption
+| `n/[keygrip]`
+| Uses encryption subkey keygrip
+
+| SSH authentication
+| `s/[keygrip]`
+| `gpg-agent` acts as SSH agent; separate cache entry from OpenPGP operations on same key
+
+| Smart card PIN
+| `n/[keygrip]` or `--clear`
+| Some smart card flows send `--clear` if caching is disabled; card serial/holder metadata appears in SETDESC
+
+| Key generation
+| Not sent
+| No SETKEYINFO in key generation flow; repeat-passphrase mode used instead; no cache entry written
+|===
+
+== What Pinentry Cannot Know
+
+Pinentry receives only what `gpg-agent` sends via the Assuan protocol.
+The following information is NOT available:
+
+* Full OpenPGP v4 fingerprint (40 hex chars) — only the keygrip and the long key ID in SETDESC text are available
+* OpenPGP v5 fingerprint (64 hex chars)
+* User ID (name, email, comment) — may appear in SETDESC text but is not structured data
+* Key algorithm (RSA, ECDSA, EdDSA, etc.)
+* Key creation or expiry dates (may appear in SETDESC text but is not structured)
+* Key usage flags (sign, encrypt, authenticate, certify)
+* Whether the key is a primary key or a subkey
+
+To map a keygrip to a fingerprint or user ID, an external call to `gpg --with-keygrip --list-keys` would be needed.
+This is not implemented.

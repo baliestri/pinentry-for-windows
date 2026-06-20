@@ -13,6 +13,8 @@ internal static class SessionState {
   public static string CachePrefix { get; set; } = string.Empty;
   public static string CacheUser { get; set; } = string.Empty;
   public static string KeyInfo { get; set; } = string.Empty;
+  public static string KeyInfoType { get; set; } = string.Empty;
+  public static string KeyGrip { get; set; } = string.Empty;
   public static string OkButtonText { get; set; } = string.Empty;
   public static string CancelButtonText { get; set; } = string.Empty;
   public static string NotOkButtonText { get; set; } = string.Empty;
@@ -31,6 +33,8 @@ internal static class SessionState {
     CachePrefix = "pfwcache:";
     CacheUser = string.Empty;
     KeyInfo = string.Empty;
+    KeyInfoType = string.Empty;
+    KeyGrip = string.Empty;
     OkButtonText = "OK";
     CancelButtonText = "Cancel";
     NotOkButtonText = "Do not do this";
