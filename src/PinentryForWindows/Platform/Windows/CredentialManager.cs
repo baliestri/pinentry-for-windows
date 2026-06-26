@@ -120,29 +120,36 @@ internal static class CredentialManager {
     var domainName = new char[domainNameLength];
     var password = new char[passwordLength];
 
-    fixed (char* userNamePtr = userName)
-    fixed (char* domainNamePtr = domainName)
-    fixed (char* passwordPtr = password) {
-      if (!PInvoke.CredUnPackAuthenticationBuffer(
-            CRED_PACK_FLAGS.CRED_PACK_GENERIC_CREDENTIALS,
-            authBuffer,
-            authBufferSize,
-            new PWSTR(userNamePtr),
-            &userNameLength,
-            new PWSTR(domainNamePtr),
-            &domainNameLength,
-            new PWSTR(passwordPtr),
-            &passwordLength)) {
-        throw new Win32Exception(Marshal.GetLastWin32Error());
+    try {
+      fixed (char* userNamePtr = userName)
+      fixed (char* domainNamePtr = domainName)
+      fixed (char* passwordPtr = password) {
+        if (!PInvoke.CredUnPackAuthenticationBuffer(
+              CRED_PACK_FLAGS.CRED_PACK_GENERIC_CREDENTIALS,
+              authBuffer,
+              authBufferSize,
+              new PWSTR(userNamePtr),
+              &userNameLength,
+              new PWSTR(domainNamePtr),
+              &domainNameLength,
+              new PWSTR(passwordPtr),
+              &passwordLength)) {
+          throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
       }
-    }
 
-    return new PromptCredentialsResult {
-      UserName = ToStringFromBuffer(userName),
-      DomainName = ToStringFromBuffer(domainName),
-      Password = ToStringFromBuffer(password),
-      IsSaveChecked = save
-    };
+      return new PromptCredentialsResult {
+        UserName = ToStringFromBuffer(userName),
+        DomainName = ToStringFromBuffer(domainName),
+        Password = ToStringFromBuffer(password),
+        IsSaveChecked = save
+      };
+    }
+    finally {
+      Array.Clear(password, 0, password.Length);
+      Array.Clear(userName, 0, userName.Length);
+      Array.Clear(domainName, 0, domainName.Length);
+    }
   }
 
   private static unsafe void ZeroFreeCoTaskMem(IntPtr buffer, uint byteCount) {

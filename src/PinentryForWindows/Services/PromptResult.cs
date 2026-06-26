@@ -3,4 +3,7 @@
 
 namespace PinentryForWindows.Services;
 
-internal sealed record PromptResult(string Password, bool SaveChecked);
+internal sealed record PromptResult(string Password, bool SaveChecked) {
+  public override string ToString()
+    => $"PromptResult {{ Password = [redacted], SaveChecked = {SaveChecked} }}";
+}
