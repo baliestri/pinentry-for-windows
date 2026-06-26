@@ -245,9 +245,22 @@ The `PinentryForWindows.CacheUnlock.v1` key is created without requiring a TPM o
 On machines without a TPM, the key may be software-backed.
 This does not affect the current threat model (presence gating, not cryptographic binding) but would matter for a future binding implementation.
 
-**Managed memory is not zeroed.**
-Passphrases are held in .NET `string` objects for the duration of the prompt and Assuan response.
+**Managed `string` objects are not zeroed.**
+Passphrases flow through the codebase as .NET `string` values, which are immutable and cannot be reliably cleared.
 They are not pinned, not zeroed on release, and may persist in the managed heap until garbage collected.
+`SecureString` is not used because it is deprecated and removed from .NET AOT targets.
+This is an accepted limitation of the managed runtime model.
+
+**Intermediate managed buffers are minimised.**
+Where passphrases pass through an intermediate managed buffer on their way to or from a native API or DPAPI call —
+specifically the `char[]` arrays in `CredentialManager.UnpackCredentials` and the `byte[]` arrays in
+`CacheEntryProtector.Protect` and `TryUnprotect` — those buffers are cleared with `Array.Clear` immediately after use.
+This reduces but does not eliminate the window during which passphrase bytes appear in unprotected managed heap memory.
+
+**`PromptResult.ToString()` is redacted.**
+The `PromptResult` record overrides `ToString()` to replace the `Password` field with `[redacted]`.
+Exception formatters, debug output, and logging infrastructure that format a `PromptResult` by value
+will not include the passphrase.
 
 **RDP protection is incidental.**
 Cache suppression in RDP sessions is a side effect of Windows Hello being unavailable, not an explicit design guarantee.
@@ -267,10 +280,11 @@ This would require a new key name version and a migration path for existing `pfw
 Require a Windows Hello confirmation before storing a passphrase in `PasswordVault`.
 Currently the write is ungated because the user just authenticated interactively, but adding a gate would make the write explicit and auditable.
 
-=== Secure in-process passphrase memory
+=== Secure in-process passphrase memory (partially addressed)
 
-Investigate pinning passphrase values using `GCHandle.Alloc(pin: true)` and overwriting the memory after use.
-This is limited by .NET's lack of a guaranteed `SecureString`-equivalent for AOT-compiled native executables, but even partial mitigation reduces the window for memory inspection.
+Intermediate `char[]` and `byte[]` buffers that hold passphrase data en route to or from native and DPAPI calls are now cleared with `Array.Clear` after use.
+Managed `string` values cannot be cleared due to .NET immutability constraints.
+Further work would require pinning passphrase bytes with `GCHandle.Alloc(pin: true)`, writing them manually, and clearing via unsafe pointer operations — an approach that adds significant complexity and is outside current scope.
 
 === Attestation requirement on Hello key
 
