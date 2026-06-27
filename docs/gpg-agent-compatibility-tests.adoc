@@ -65,7 +65,52 @@ Additional switches include:
 
 | `-IncludeGpgKeyTests`
 | Creates a temporary `GNUPGHOME`, generates a throwaway GPG key, signs a message, then cleans up.
+
+| `-IncludeDecryptTest`
+| Requires `-IncludeGpgKeyTests`. Adds an RSA encryption subkey and runs a live encrypt + decrypt scenario. The user must enter the PIN when GPG prompts to decrypt. Sets `default-cache-ttl` to 300 seconds when combined with `-IncludeCacheTests`.
+
+| `-IncludeCacheTests`
+| Requires `-IncludeGpgKeyTests`. Runs two additional scenarios: a cache-hit test (gpg-agent serves the passphrase from its internal cache — no PIN prompt expected) and a cache-clear test (agent is killed to flush the cache, then a fresh PIN prompt is expected). Sets `default-cache-ttl 300` instead of 1 second so the cache survives between scenarios.
 |===
+
+== Assuan Trace Capture
+
+After each live scenario (`-IncludeCacheTests`, `-IncludeDecryptTest`), a sanitized Assuan trace is written to the temporary `GNUPGHOME`:
+
+----
+{GNUPGHOME}/assuan-trace-cache-hit.txt
+{GNUPGHOME}/assuan-trace-cache-clear.txt
+{GNUPGHOME}/assuan-trace-decrypt.txt
+----
+
+The trace contains new lines appended to `%LOCALAPPDATA%\PinentryForWindows\pinentry.log` during the scenario.
+The user-entered PIN is replaced with `[pin]`.
+These traces can be used to construct new replay sequences for `GpgAgentCompatibilityTests.cs`.
+
+== Replay Tests vs Live Tests
+
+[cols="1,2,2", options="header"]
+|===
+| | Replay tests (C#) | Live tests (PowerShell)
+
+| Trigger
+| Always-on (`dotnet test`)
+| Opt-in (script switches)
+
+| Dependencies
+| None — no GPG, no UI, no Windows Hello
+| GnuPG in PATH; UI access for interactive scenarios
+
+| What they cover
+| Command handler behavior, cache logic, Assuan response codes, protocol correctness, error paths
+| Process lifetime, gpg-agent↔pinentry socket handshake, real credential dialogs, OS-level caching
+
+| When to add one
+| Behavior is testable via mocked `ICredentialService` / `IDialogService`
+| Requires real gpg-agent, CredUI, or Windows Hello interaction
+|===
+
+When a live run reveals a new command sequence worth preserving, copy the sanitized Assuan trace into a new test method in `GpgAgentCompatibilityTests.cs` using `GpgAgentReplay`.
 
 == Safety Rules For New Compatibility Tests
 
