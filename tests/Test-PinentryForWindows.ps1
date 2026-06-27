@@ -12,6 +12,13 @@ Use -IncludeDialogTests to run manual MESSAGE/CONFIRM dialog checks.
 Use -IncludeCancelTests to run manual cancellation checks.
 Use -IncludeGpgKeyTests to create a throwaway GNUPGHOME and a temporary key; the
 script deletes generated keys and removes the temporary GNUPGHOME in cleanup.
+Use -IncludeDecryptTest (requires -IncludeGpgKeyTests) to add an encryption subkey and
+run a live encrypt + decrypt scenario. The user must enter the PIN when prompted.
+Use -IncludeCacheTests (requires -IncludeGpgKeyTests) to run gpg-agent internal cache-hit
+(no PIN prompt expected) and cache-clear (PIN re-prompted) scenarios. Sets
+default-cache-ttl to 300 seconds instead of 1 so the cache survives the test sequence.
+Sanitized Assuan traces from each live scenario are written to the temporary GNUPGHOME
+and can be used to construct new GpgAgentCompatibilityTests replay sequences.
 #>
 
 [CmdletBinding()]
@@ -26,7 +33,9 @@ param(
   [switch] $RequireWindowsHelloCache,
   [switch] $IncludeDialogTests,
   [switch] $IncludeCancelTests,
-  [switch] $IncludeGpgKeyTests
+  [switch] $IncludeGpgKeyTests,
+  [switch] $IncludeDecryptTest,
+  [switch] $IncludeCacheTests
 )
 
 Set-StrictMode -Version Latest
@@ -675,6 +684,205 @@ function Invoke-OptionalDialogTests {
   ) -AllowUi)
 }
 
+function Get-PinentryLogPath {
+  $localAppData = [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::LocalApplicationData)
+  Join-Path $localAppData 'PinentryForWindows' 'pinentry.log'
+}
+
+function Write-PinentryLogTail {
+  param([int] $Lines = 30)
+
+  $logPath = Get-PinentryLogPath
+  if (-not (Test-Path $logPath)) {
+    Write-Host "   (pinentry log not found at $logPath)" -ForegroundColor Yellow
+    return
+  }
+
+  Write-Host "   --- last $Lines lines of pinentry log ($logPath) ---" -ForegroundColor Yellow
+  Get-Content $logPath -Tail $Lines | ForEach-Object { Write-Host "   $_" -ForegroundColor Yellow }
+  Write-Host "   --- end of log ---" -ForegroundColor Yellow
+}
+
+function Save-AssuanTrace {
+  param(
+    [string] $ScenarioName,
+    [string] $LogPath,
+    [long]   $StartOffset,
+    [string] $GpgHome,
+    [string] $SensitivePin
+  )
+
+  if (-not (Test-Path $LogPath)) {
+    return
+  }
+
+  try {
+    $stream = [System.IO.File]::Open($LogPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try {
+      [void] $stream.Seek($StartOffset, [System.IO.SeekOrigin]::Begin)
+      $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8, $true, 4096, $true)
+      $newContent = $reader.ReadToEnd()
+      $reader.Dispose()
+    }
+    finally {
+      $stream.Dispose()
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($SensitivePin)) {
+      $newContent = $newContent -replace [Regex]::Escape($SensitivePin), '[pin]'
+    }
+
+    $tracePath = Join-Path $GpgHome "assuan-trace-$ScenarioName.txt"
+    [System.IO.File]::WriteAllText($tracePath, $newContent, [System.Text.Encoding]::UTF8)
+    Write-Host "   Assuan trace saved: $tracePath" -ForegroundColor DarkGray
+  }
+  catch {
+    Write-Host "   WARN: could not save Assuan trace for '$ScenarioName': $($_.Exception.Message)" -ForegroundColor Yellow
+  }
+}
+
+function Invoke-LiveCacheHitTest {
+  param(
+    [string]    $Gpg,
+    [string]    $GpgHome,
+    [hashtable] $EnvVars,
+    [string]    $MessagePath,
+    [string]    $Fingerprint
+  )
+
+  Write-Step 'Live gpg-agent internal cache-hit test'
+  Write-Host '   gpg-agent should serve the passphrase from its internal cache — no PIN prompt expected.' -ForegroundColor Yellow
+
+  $logPath = Get-PinentryLogPath
+  $startOffset = if (Test-Path $logPath) { (Get-Item $logPath).Length } else { 0 }
+
+  try {
+    [void] (Invoke-CheckedCommand `
+        -FilePath $Gpg `
+        -Arguments @('--homedir', $GpgHome, '--local-user', $Fingerprint, '--batch', '--yes', '--detach-sign', $MessagePath) `
+        -Description 'gpg detach-sign cache-hit (no PIN prompt expected)' `
+        -Environment $EnvVars)
+
+    $logPath2 = Get-PinentryLogPath
+    if (Test-Path $logPath2) {
+      $newLines = Get-Content $logPath2 -Encoding UTF8 -Raw
+      if ($null -ne $newLines) {
+        $newLines = $newLines.Substring([Math]::Min($startOffset, $newLines.Length))
+        if ($newLines -match 'GETPIN') {
+          Add-Warning 'Cache-hit test: GETPIN was seen in the pinentry log; gpg-agent may not have used its internal cache.'
+        }
+      }
+    }
+
+    Write-Host '   PASS' -ForegroundColor Green
+  }
+  catch {
+    Add-Failure "Live cache-hit test: $($_.Exception.Message)"
+    Write-PinentryLogTail
+  }
+  finally {
+    Save-AssuanTrace -ScenarioName 'cache-hit' -LogPath $logPath -StartOffset $startOffset -GpgHome $GpgHome -SensitivePin $ExpectedPin
+  }
+}
+
+function Invoke-LiveCacheClearTest {
+  param(
+    [string]    $Gpg,
+    [string]    $GpgConf,
+    [string]    $GpgHome,
+    [hashtable] $EnvVars,
+    [string]    $MessagePath,
+    [string]    $Fingerprint
+  )
+
+  Write-Step 'Live gpg-agent cache-clear test'
+  Write-Host "   gpg-agent will be killed to clear its internal cache." -ForegroundColor Yellow
+  Write-Host "   Enter PIN '$ExpectedPin' when GPG prompts for the passphrase." -ForegroundColor Yellow
+
+  $logPath = Get-PinentryLogPath
+  $startOffset = if (Test-Path $logPath) { (Get-Item $logPath).Length } else { 0 }
+
+  try {
+    [void] (Invoke-CheckedCommand `
+        -FilePath $GpgConf `
+        -Arguments @('--homedir', $GpgHome, '--kill', 'gpg-agent') `
+        -Description 'kill gpg-agent to clear internal passphrase cache' `
+        -Environment $EnvVars)
+
+    [void] (Invoke-CheckedCommand `
+        -FilePath $Gpg `
+        -Arguments @('--homedir', $GpgHome, '--local-user', $Fingerprint, '--detach-sign', $MessagePath) `
+        -Description 'gpg detach-sign after cache-clear (PIN prompt expected)' `
+        -Environment $EnvVars)
+
+    Write-Host '   PASS' -ForegroundColor Green
+  }
+  catch {
+    Add-Failure "Live cache-clear test: $($_.Exception.Message)"
+    Write-PinentryLogTail
+  }
+  finally {
+    Save-AssuanTrace -ScenarioName 'cache-clear' -LogPath $logPath -StartOffset $startOffset -GpgHome $GpgHome -SensitivePin $ExpectedPin
+  }
+}
+
+function Invoke-LiveDecryptTest {
+  param(
+    [string]    $Gpg,
+    [string]    $GpgConf,
+    [string]    $GpgHome,
+    [hashtable] $EnvVars,
+    [string]    $Fingerprint
+  )
+
+  Write-Step 'Live GPG encrypt + decrypt test'
+  Write-Host "   Enter PIN '$ExpectedPin' when GPG asks to decrypt." -ForegroundColor Yellow
+
+  $logPath = Get-PinentryLogPath
+  $startOffset = if (Test-Path $logPath) { (Get-Item $logPath).Length } else { 0 }
+
+  $plaintextPath  = Join-Path $GpgHome 'plaintext.txt'
+  $encryptedPath  = Join-Path $GpgHome 'encrypted.gpg'
+  $decryptedPath  = Join-Path $GpgHome 'decrypted.txt'
+  $expectedContent = "pinentry decrypt test $Script:RunId"
+
+  try {
+    Set-Content -Path $plaintextPath -Value $expectedContent -Encoding ascii
+
+    [void] (Invoke-CheckedCommand `
+        -FilePath $Gpg `
+        -Arguments @('--homedir', $GpgHome, '--batch', '--yes', '--recipient', $Fingerprint,
+                     '--output', $encryptedPath, '--encrypt', $plaintextPath) `
+        -Description 'gpg encrypt test data' `
+        -Environment $EnvVars)
+
+    [void] (Invoke-CheckedCommand `
+        -FilePath $GpgConf `
+        -Arguments @('--homedir', $GpgHome, '--kill', 'gpg-agent') `
+        -Description 'kill gpg-agent before decrypt (ensures fresh GETPIN)' `
+        -Environment $EnvVars)
+
+    [void] (Invoke-CheckedCommand `
+        -FilePath $Gpg `
+        -Arguments @('--homedir', $GpgHome, '--batch', '--yes',
+                     '--output', $decryptedPath, '--decrypt', $encryptedPath) `
+        -Description 'gpg decrypt test data (PIN prompt expected)' `
+        -Environment $EnvVars)
+
+    $decryptedContent = (Get-Content -Path $decryptedPath -Encoding ascii -Raw).Trim()
+    Assert-True ($decryptedContent -eq $expectedContent) "Decrypted content '$decryptedContent' does not match expected '$expectedContent'."
+
+    Write-Host '   PASS' -ForegroundColor Green
+  }
+  catch {
+    Add-Failure "Live decrypt test: $($_.Exception.Message)"
+    Write-PinentryLogTail
+  }
+  finally {
+    Save-AssuanTrace -ScenarioName 'decrypt' -LogPath $logPath -StartOffset $startOffset -GpgHome $GpgHome -SensitivePin $ExpectedPin
+  }
+}
+
 function Invoke-OptionalGpgKeyTests {
   param([string] $ExecutablePath)
 
@@ -700,10 +908,11 @@ function Invoke-OptionalGpgKeyTests {
   $Script:CreatedGpgHome = $gpgHome
 
   $escapedPinentry = $ExecutablePath -replace '\\', '/'
+  $cacheTtl = if ($IncludeCacheTests) { 300 } else { 1 }
   Set-Content -Path (Join-Path $gpgHome 'gpg-agent.conf') -Value @(
     "pinentry-program $escapedPinentry"
-    'default-cache-ttl 1'
-    'max-cache-ttl 1'
+    "default-cache-ttl $cacheTtl"
+    "max-cache-ttl $cacheTtl"
   ) -Encoding ascii
 
   $uid = "Pinentry For Windows Test $Script:RunId <pinentry-test-$Script:RunId@example.invalid>"
@@ -754,6 +963,15 @@ function Invoke-OptionalGpgKeyTests {
 
   Assert-True ($Script:CreatedGpgFingerprints.Count -gt 0) 'GPG key was generated but no fingerprint was found for cleanup.'
 
+  if ($IncludeDecryptTest) {
+    [void] (Invoke-CheckedCommand `
+        -FilePath $gpg `
+        -Arguments @('--homedir', $gpgHome, '--batch', '--quick-add-key',
+                     $Script:CreatedGpgFingerprints[0], 'rsa2048', 'encr', '1d') `
+        -Description 'gpg add encryption subkey for decrypt test' `
+        -Environment $envVars)
+  }
+
   $messagePath = Join-Path $gpgHome 'message.txt'
   Set-Content -Path $messagePath -Value "pinentry smoke test $Script:RunId" -Encoding ascii
 
@@ -762,6 +980,21 @@ function Invoke-OptionalGpgKeyTests {
       -Arguments @('--homedir', $gpgHome, '--local-user', $Script:CreatedGpgFingerprints[0], '--detach-sign', $messagePath) `
       -Description 'gpg detach-sign smoke test' `
       -Environment $envVars)
+
+  if ($IncludeCacheTests) {
+    Invoke-LiveCacheHitTest `
+      -Gpg $gpg -GpgHome $gpgHome -EnvVars $envVars `
+      -MessagePath $messagePath -Fingerprint $Script:CreatedGpgFingerprints[0]
+    Invoke-LiveCacheClearTest `
+      -Gpg $gpg -GpgConf $gpgconf -GpgHome $gpgHome -EnvVars $envVars `
+      -MessagePath $messagePath -Fingerprint $Script:CreatedGpgFingerprints[0]
+  }
+
+  if ($IncludeDecryptTest) {
+    Invoke-LiveDecryptTest `
+      -Gpg $gpg -GpgConf $gpgconf -GpgHome $gpgHome -EnvVars $envVars `
+      -Fingerprint $Script:CreatedGpgFingerprints[0]
+  }
 }
 
 function New-ShortGpgToolPaths {
