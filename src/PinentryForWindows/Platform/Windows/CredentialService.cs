@@ -73,6 +73,15 @@ internal sealed class CredentialService : ICredentialService {
     return Task.CompletedTask;
   }
 
+  /// <inheritdoc />
+  public async Task<PromptResult?> PromptWithSaveCheckboxAsync(string title, string message, string userName, CancellationToken ct = default) {
+    if (ct.IsCancellationRequested) {
+      return null;
+    }
+
+    return await Task.Run(() => PromptWithNativeCredentialDialogWithSave(title, message, userName), ct);
+  }
+
   private static void RemoveFromPasswordVault(PasswordVault vault, string cacheKey) {
     try {
       foreach (var credential in vault.FindAllByResource(cacheKey)) {
@@ -161,14 +170,5 @@ internal sealed class CredentialService : ICredentialService {
     }
 
     return new PromptResult(result.Password, result.IsSaveChecked);
-  }
-
-  /// <inheritdoc />
-  public async Task<PromptResult?> PromptWithSaveCheckboxAsync(string title, string message, string userName, CancellationToken ct = default) {
-    if (ct.IsCancellationRequested) {
-      return null;
-    }
-
-    return await Task.Run(() => PromptWithNativeCredentialDialogWithSave(title, message, userName), ct);
   }
 }

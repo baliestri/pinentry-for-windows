@@ -5,11 +5,19 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.Security.Credentials;
 
 namespace PinentryForWindows.Platform.Windows;
 
 internal static class CredentialManager {
+  [Flags]
+  public enum PromptForWindowsCredentialsFlag {
+    CredUiWinGeneric = 0x00000001,
+    CredUiWinCheckbox = 0x00000004,
+    CredUiWinInCredOnly = 0x00000020
+  }
+
   private const int CRED_UI_CANCELLED = 1223;
 
   public static unsafe PromptCredentialsResult? PromptForWindowsCredentials(PromptForWindowsCredentialsOptions options, string userName,
@@ -48,7 +56,7 @@ internal static class CredentialManager {
           hwndParent = new HWND(options.HwndParent),
           pszCaptionText = new PCWSTR(captionPtr),
           pszMessageText = new PCWSTR(messagePtr),
-          hbmBanner = new global::Windows.Win32.Graphics.Gdi.HBITMAP(options.HbmBanner)
+          hbmBanner = new HBITMAP(options.HbmBanner)
         };
 
         var result = PInvoke.CredUIPromptForWindowsCredentials(
@@ -167,13 +175,6 @@ internal static class CredentialManager {
   private static string ToStringFromBuffer(char[] buffer) {
     var length = Array.IndexOf(buffer, '\0');
     return new string(buffer, 0, length >= 0 ? length : buffer.Length);
-  }
-
-  [Flags]
-  public enum PromptForWindowsCredentialsFlag {
-    CredUiWinGeneric = 0x00000001,
-    CredUiWinCheckbox = 0x00000004,
-    CredUiWinInCredOnly = 0x00000020
   }
 
   public sealed class PromptForWindowsCredentialsOptions(string caption, string message) {

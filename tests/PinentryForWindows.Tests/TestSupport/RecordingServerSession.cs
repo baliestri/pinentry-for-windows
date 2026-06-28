@@ -6,12 +6,12 @@ using AssuanLibrary.Server.Abstractions;
 namespace PinentryForWindows.Tests.TestSupport;
 
 internal sealed class RecordingServerSession : IServerSession {
+  public bool IsClosedGracefully { get; private set; }
   public Guid Id { get; } = Guid.NewGuid();
   public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
   public DateTimeOffset LastActivityAt { get; private set; } = DateTimeOffset.UtcNow;
   public IDictionary<string, object?> Items { get; } = new Dictionary<string, object?>();
   public CancellationToken CancellationToken { get; init; }
-  public bool IsClosedGracefully { get; private set; }
 
   public void RefreshLastActivity()
     => LastActivityAt = DateTimeOffset.UtcNow;

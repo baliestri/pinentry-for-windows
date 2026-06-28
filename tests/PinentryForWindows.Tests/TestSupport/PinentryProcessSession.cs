@@ -12,6 +12,24 @@ internal sealed class PinentryProcessSession : IAsyncDisposable {
   private PinentryProcessSession(Process process)
     => _process = process;
 
+  public async ValueTask DisposeAsync() {
+    if (!_process.HasExited) {
+      try {
+        await SendAsync("BYE");
+      }
+      catch {
+        // Cleanup must not hide the original test failure.
+      }
+    }
+
+    if (!_process.HasExited) {
+      _process.Kill(true);
+    }
+
+    await _process.WaitForExitAsync();
+    _process.Dispose();
+  }
+
   public static async Task<PinentryProcessSession> StartAsync() {
     var executablePath = FindExecutablePath();
     var process = new Process {
@@ -45,24 +63,6 @@ internal sealed class PinentryProcessSession : IAsyncDisposable {
     await _process.StandardInput.FlushAsync();
 
     return await ReadResponseAsync();
-  }
-
-  public async ValueTask DisposeAsync() {
-    if (!_process.HasExited) {
-      try {
-        await SendAsync("BYE");
-      }
-      catch {
-        // Cleanup must not hide the original test failure.
-      }
-    }
-
-    if (!_process.HasExited) {
-      _process.Kill(entireProcessTree: true);
-    }
-
-    await _process.WaitForExitAsync();
-    _process.Dispose();
   }
 
   private async Task<AssuanProcessResponse> ReadResponseAsync() {

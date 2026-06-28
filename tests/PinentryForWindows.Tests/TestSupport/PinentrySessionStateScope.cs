@@ -12,14 +12,14 @@ internal sealed class SessionStateScope : IDisposable {
   private SessionStateScope()
     => _snapshot = Snapshot.Capture();
 
+  public void Dispose()
+    => _snapshot.Apply();
+
   public static SessionStateScope Create() {
     var scope = new SessionStateScope();
     Reset();
     return scope;
   }
-
-  public void Dispose()
-    => _snapshot.Apply();
 
   public static void Reset() {
     SessionState.Reset();

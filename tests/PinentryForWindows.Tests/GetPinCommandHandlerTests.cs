@@ -216,7 +216,8 @@ public sealed class GetPinCommandHandlerTests {
 
     context.ShouldHaveSingleError(83886194);
     dialogs.VerifyAll();
-    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+      Times.Never);
   }
 
   [Fact]
@@ -235,7 +236,8 @@ public sealed class GetPinCommandHandlerTests {
     var context = await new GetPinCommandHandler(credentials.Object, dialogs.Object).InvokeAsync("GETPIN");
 
     context.ShouldHaveSingleError(ExitCode.CANCELLED);
-    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+      Times.Never);
   }
 
   [Fact]
@@ -249,7 +251,7 @@ public sealed class GetPinCommandHandlerTests {
     credentials
       .Setup(service => service.PromptWithSaveCheckboxAsync("Pinentry for Windows", "Enter PIN",
         "n/AABBCCDDEE1122334455667788990011AABBCCDD", It.IsAny<CancellationToken>()))
-      .ReturnsAsync(new PromptResult("secret", SaveChecked: true));
+      .ReturnsAsync(new PromptResult("secret", true));
     credentials.Setup(service => service.StoreAsync(
         "pfwcache:n/AABBCCDDEE1122334455667788990011AABBCCDD",
         "n/AABBCCDDEE1122334455667788990011AABBCCDD",
@@ -275,13 +277,14 @@ public sealed class GetPinCommandHandlerTests {
     credentials
       .Setup(service => service.PromptWithSaveCheckboxAsync("Pinentry for Windows", "Enter PIN",
         "n/AABBCCDDEE1122334455667788990011AABBCCDD", It.IsAny<CancellationToken>()))
-      .ReturnsAsync(new PromptResult("secret", SaveChecked: false));
+      .ReturnsAsync(new PromptResult("secret", false));
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
 
     var context = await new GetPinCommandHandler(credentials.Object, dialogs.Object).InvokeAsync("GETPIN");
 
     context.TextLines().ShouldBe(["D secret", "OK"]);
-    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+      Times.Never);
   }
 
   [Fact]
@@ -291,15 +294,19 @@ public sealed class GetPinCommandHandlerTests {
 
     var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
     credentials
-      .Setup(service => service.PromptAsync("Pinentry for Windows", "Enter password for GPG key", "Pinentry for Windows", It.IsAny<CancellationToken>()))
+      .Setup(service => service.PromptAsync("Pinentry for Windows", "Enter password for GPG key", "Pinentry for Windows",
+        It.IsAny<CancellationToken>()))
       .ReturnsAsync("secret");
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
 
     var context = await new GetPinCommandHandler(credentials.Object, dialogs.Object).InvokeAsync("GETPIN");
 
     context.TextLines().ShouldBe(["D secret", "OK"]);
-    credentials.Verify(service => service.PromptWithSaveCheckboxAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    credentials.Verify(
+      service => service.PromptWithSaveCheckboxAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+      Times.Never);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+      Times.Never);
   }
 
   [Fact]
@@ -321,7 +328,10 @@ public sealed class GetPinCommandHandlerTests {
     var context = await new GetPinCommandHandler(credentials.Object, dialogs.Object).InvokeAsync("GETPIN");
 
     context.TextLines().ShouldBe(["S PIN_REPEATED", "D secret", "OK"]);
-    credentials.Verify(service => service.PromptWithSaveCheckboxAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
-    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    credentials.Verify(
+      service => service.PromptWithSaveCheckboxAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+      Times.Never);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+      Times.Never);
   }
 }

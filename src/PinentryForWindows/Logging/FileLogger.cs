@@ -10,13 +10,6 @@ internal sealed class FileLogger(string filePath) : IAssuanLogger {
   private static readonly IDisposable _nullScope = new NoopScope();
   private readonly Lock _gate = new();
 
-  public static FileLogger CreateDefault() {
-    var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-    var filePath = Path.Combine(localAppData, "PinentryForWindows", "pinentry.log");
-
-    return new FileLogger(filePath);
-  }
-
   /// <inheritdoc />
   public IDisposable BeginScope<TState>(TState state) where TState : notnull
     => _nullScope;
@@ -49,6 +42,13 @@ internal sealed class FileLogger(string filePath) : IAssuanLogger {
     catch {
       // Pinentry must never fail because diagnostic logging is unavailable.
     }
+  }
+
+  public static FileLogger CreateDefault() {
+    var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    var filePath = Path.Combine(localAppData, "PinentryForWindows", "pinentry.log");
+
+    return new FileLogger(filePath);
   }
 
   private static string NormalizeLine(string value)

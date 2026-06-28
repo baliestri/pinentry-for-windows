@@ -32,7 +32,8 @@ public sealed class GpgAgentCompatibilityTests {
     await replay.SendOkAsync("OPTION default-cancel=_Cancel");
     await replay.SendOkAsync("SETTITLE Pinentry");
     await replay.SendOkAsync("SETPROMPT Passphrase:");
-    await replay.SendOkAsync("SETDESC Please enter the passphrase to unlock the OpenPGP secret key:%0A%22Pinentry Compatibility Decrypt <compat-decrypt@example.invalid>%22%0A2048-bit RSA key, ID ABCDEF1234567890,%0Acreated 2026-06-06.");
+    await replay.SendOkAsync(
+      "SETDESC Please enter the passphrase to unlock the OpenPGP secret key:%0A%22Pinentry Compatibility Decrypt <compat-decrypt@example.invalid>%22%0A2048-bit RSA key, ID ABCDEF1234567890,%0Acreated 2026-06-06.");
     await replay.SendOkAsync("SETKEYINFO " + KEY_INFO);
 
     var getPin = await replay.SendAsync("GETPIN");
@@ -61,7 +62,8 @@ public sealed class GpgAgentCompatibilityTests {
     await replay.SendOkAsync("OPTION default-ok=_Sign");
     await replay.SendOkAsync("SETTITLE Pinentry");
     await replay.SendOkAsync("SETPROMPT Passphrase:");
-    await replay.SendOkAsync("SETDESC Please enter the passphrase to unlock the OpenPGP secret key:%0A%22Pinentry Compatibility Sign <compat-sign@example.invalid>%22%0A2048-bit RSA key, ID 0123456789ABCDEF,%0Acreated 2026-06-06.");
+    await replay.SendOkAsync(
+      "SETDESC Please enter the passphrase to unlock the OpenPGP secret key:%0A%22Pinentry Compatibility Sign <compat-sign@example.invalid>%22%0A2048-bit RSA key, ID 0123456789ABCDEF,%0Acreated 2026-06-06.");
     await replay.SendOkAsync("SETKEYINFO " + KEY_INFO);
 
     var getPin = await replay.SendAsync("GETPIN");
@@ -241,7 +243,8 @@ public sealed class GpgAgentCompatibilityTests {
 
     await replay.SendOkAsync("OPTION allow-external-password-cache");
     await replay.SendOkAsync("SETTITLE Pinentry");
-    await replay.SendOkAsync("SETDESC Please enter the passphrase to unlock the OpenPGP secret key:%0A%22Test User <test@example.invalid>%22%0A2048-bit RSA key, ID ABCDEF1234567890.");
+    await replay.SendOkAsync(
+      "SETDESC Please enter the passphrase to unlock the OpenPGP secret key:%0A%22Test User <test@example.invalid>%22%0A2048-bit RSA key, ID ABCDEF1234567890.");
     await replay.SendOkAsync("SETKEYINFO " + KEY_INFO);
 
     var getPin = await replay.SendAsync("GETPIN");

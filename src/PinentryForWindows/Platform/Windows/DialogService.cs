@@ -2,10 +2,10 @@
 // See the LICENSE file in the repository root for full license text.
 
 using System.Runtime.InteropServices;
-using PinentryForWindows.Services;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.Controls;
+using PinentryForWindows.Services;
 
 namespace PinentryForWindows.Platform.Windows;
 
@@ -82,7 +82,7 @@ internal sealed class DialogService : IDialogService {
 
   private static int ShowTaskDialog(ref TASKDIALOGCONFIG config, int timeoutSeconds, int timeoutButtonId, out bool timedOut) {
     if (timeoutSeconds <= 0) {
-      PInvoke.TaskDialogIndirect(in config, out var selectedButton, out _, out _).ThrowOnFailure();
+      PInvoke.TaskDialogIndirect(in config, out var selectedButton, out var _, out var _).ThrowOnFailure();
       timedOut = false;
       return selectedButton;
     }
@@ -94,7 +94,7 @@ internal sealed class DialogService : IDialogService {
       config.pfCallback = _callback;
       config.lpCallbackData = GCHandle.ToIntPtr(timeoutStateHandle);
 
-      PInvoke.TaskDialogIndirect(in config, out var selectedButton, out _, out _).ThrowOnFailure();
+      PInvoke.TaskDialogIndirect(in config, out var selectedButton, out var _, out var _).ThrowOnFailure();
       timedOut = timeoutState.TimedOut;
       return selectedButton;
     }
@@ -111,7 +111,7 @@ internal sealed class DialogService : IDialogService {
     }
 
     timeoutState.TimedOut = true;
-    _ = PInvoke.SendMessage(hwnd, (uint)TASKDIALOG_MESSAGES.TDM_CLICK_BUTTON, new WPARAM((nuint)timeoutState.TimeoutButtonId), default);
+    _ = PInvoke.SendMessage(hwnd, (uint)TASKDIALOG_MESSAGES.TDM_CLICK_BUTTON, new WPARAM((nuint)timeoutState.TimeoutButtonId));
 
     return new HRESULT(0);
   }

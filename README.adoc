@@ -352,6 +352,50 @@ OK
 
 If they do not match, a warning dialog is shown and the response is `ERR 83886194 PIN not repeated`.
 
+== CLI Commands
+
+`PinentryForWindows.exe` supports operational commands that exit without starting the Assuan server.
+
+=== Diagnostics
+
+[source,powershell]
+----
+PinentryForWindows.exe --check
+----
+
+Checks and reports the following:
+
+* Windows Hello support
+* Windows `PasswordVault` access and number of cached entries
+* Log directory writability
+* Settings file (`AllowUserCacheOptIn` value)
+* GnuPG `pinentry-program` configuration (requires `gpgconf` in `PATH`)
+
+Each item is reported as `[OK]`, `[WARN]`, or `[FAIL]`.
+Warnings do not affect the exit code.
+Exit code is `0` if all checks pass, `1` if any check fails.
+Passphrases and cached secrets are never printed.
+
+=== Cache Management
+
+Clear all cached passphrases owned by PinentryForWindows:
+
+[source,powershell]
+----
+PinentryForWindows.exe --clear-cache
+----
+
+Clear a specific cache entry by key (the same value as the argument to `SETKEYINFO`):
+
+[source,powershell]
+----
+PinentryForWindows.exe --clear-cache n/AABBCCDDEEFF0011
+----
+
+Only entries prefixed with `pfwcache:` in Windows `PasswordVault` are affected.
+Unrelated Windows credentials are never touched.
+Exit code is always `0`.
+
 == Logging
 
 Diagnostic logs are written to:
