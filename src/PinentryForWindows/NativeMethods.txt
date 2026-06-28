@@ -1,6 +1,10 @@
 TaskDialogIndirect
+TASKDIALOG_FLAGS
+TASKDIALOG_NOTIFICATIONS
+TASKDIALOG_MESSAGES
 TD_INFORMATION_ICON
 TD_WARNING_ICON
+SendMessage
 CredPackAuthenticationBuffer
 CredUnPackAuthenticationBuffer
 CredUIPromptForWindowsCredentials

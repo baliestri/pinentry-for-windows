@@ -15,7 +15,7 @@ internal static class ResponseAssertions {
       AssuanResponseType.Data => WithPrefix("D", response.DecodedText()),
       AssuanResponseType.Comment => WithPrefix("#", response.DecodedText()),
       AssuanResponseType.Inquire => WithPrefix("INQUIRE", response.DecodedText()),
-      _ => response.DecodedText()
+      var _ => response.DecodedText()
     };
 
   public static string DecodedText(this AssuanResponse response)

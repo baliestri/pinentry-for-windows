@@ -17,6 +17,7 @@ internal sealed class CredentialService : ICredentialService {
       return null;
     }
 
+    // CredUIPromptForWindowsCredentials doesn't expose a timeout or a safe way to cancel an already displayed dialog.
     return await Task.Run(() => PromptWithNativeCredentialDialog(title, message, userName), ct);
   }
 
@@ -36,7 +37,18 @@ internal sealed class CredentialService : ICredentialService {
       var credential = credentials[0];
       credential.RetrievePassword();
 
-      return string.IsNullOrWhiteSpace(credential.Password) ? null : credential.Password;
+      var stored = credential.Password;
+      if (string.IsNullOrWhiteSpace(stored)) {
+        return null;
+      }
+
+      // Legacy plaintext entry (pre-v2, no pfwv2: prefix): remove it and treat as cache miss.
+      if (!stored.StartsWith("pfwv2:", StringComparison.Ordinal)) {
+        RemoveFromPasswordVault(vault, cacheKey);
+        return null;
+      }
+
+      return CacheEntryProtector.TryUnprotect(stored, cacheKey);
     }
     catch {
       // Ignore any errors during retrieval
@@ -48,7 +60,7 @@ internal sealed class CredentialService : ICredentialService {
   public Task StoreAsync(string cacheKey, string userName, string password, CancellationToken ct = default) {
     var vault = new PasswordVault();
     RemoveFromPasswordVault(vault, cacheKey);
-    vault.Add(new PasswordCredential(cacheKey, userName, password));
+    vault.Add(new PasswordCredential(cacheKey, userName, CacheEntryProtector.Protect(password, cacheKey)));
 
     return Task.CompletedTask;
   }
@@ -59,6 +71,15 @@ internal sealed class CredentialService : ICredentialService {
     RemoveFromPasswordVault(vault, cacheKey);
 
     return Task.CompletedTask;
+  }
+
+  /// <inheritdoc />
+  public async Task<PromptResult?> PromptWithSaveCheckboxAsync(string title, string message, string userName, CancellationToken ct = default) {
+    if (ct.IsCancellationRequested) {
+      return null;
+    }
+
+    return await Task.Run(() => PromptWithNativeCredentialDialogWithSave(title, message, userName), ct);
   }
 
   private static void RemoveFromPasswordVault(PasswordVault vault, string cacheKey) {
@@ -128,5 +149,26 @@ internal sealed class CredentialService : ICredentialService {
     }
 
     return result.Password;
+  }
+
+  private static PromptResult? PromptWithNativeCredentialDialogWithSave(string title, string message, string lockedUserName) {
+    var options = new CredentialManager.PromptForWindowsCredentialsOptions(title, message) {
+      IsSaveChecked = false,
+      Flags = CredentialManager.PromptForWindowsCredentialsFlag.CredUiWinGeneric |
+              CredentialManager.PromptForWindowsCredentialsFlag.CredUiWinInCredOnly |
+              CredentialManager.PromptForWindowsCredentialsFlag.CredUiWinCheckbox
+    };
+
+    var result = CredentialManager.PromptForWindowsCredentials(options, lockedUserName, string.Empty);
+    if (result is null ||
+        string.IsNullOrWhiteSpace(result.Password)) {
+      return null;
+    }
+
+    if (!string.Equals(result.UserName, lockedUserName, StringComparison.OrdinalIgnoreCase)) {
+      return null;
+    }
+
+    return new PromptResult(result.Password, result.IsSaveChecked);
   }
 }

@@ -88,7 +88,7 @@ internal sealed partial class SetDescriptionCommandHandler : CommandHandler {
   private static string BuildCardUserName(string holder, string number)
     => (holder, number) switch {
       ({ Length: > 0 }, { Length: > 0 }) => $"{holder} ({number})",
-      ({ Length: > 0 }, _) => holder,
+      ({ Length: > 0 }, var _) => holder,
       (var _, { Length: > 0 }) => number,
       var _ => string.Empty
     };

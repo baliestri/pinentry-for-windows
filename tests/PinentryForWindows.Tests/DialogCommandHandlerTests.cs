@@ -15,7 +15,7 @@ public sealed class DialogCommandHandlerTests {
     SessionState.Title = "Title";
     SessionState.Description = "Default description";
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
-    dialogs.Setup(service => service.ShowMessage("Title", "Command message"));
+    dialogs.Setup(service => service.ShowMessage("Title", "Command message", 0)).Returns(DialogResponse.Accepted);
 
     (await new MessageCommandHandler(dialogs.Object).InvokeAsync("MESSAGE Command message")).ShouldHaveSingleOk();
 
@@ -28,7 +28,7 @@ public sealed class DialogCommandHandlerTests {
     SessionState.Title = "Title";
     SessionState.Description = "Default description";
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
-    dialogs.Setup(service => service.ShowMessage("Title", "Default description"));
+    dialogs.Setup(service => service.ShowMessage("Title", "Default description", 0)).Returns(DialogResponse.Accepted);
 
     (await new MessageCommandHandler(dialogs.Object).InvokeAsync("MESSAGE")).ShouldHaveSingleOk();
 
@@ -41,7 +41,7 @@ public sealed class DialogCommandHandlerTests {
     SessionState.Title = "Title";
     SessionState.Description = "Description";
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
-    dialogs.Setup(service => service.ShowMessage("Title", "Description"));
+    dialogs.Setup(service => service.ShowMessage("Title", "Description", 0)).Returns(DialogResponse.Accepted);
 
     (await new ConfirmCommandHandler(dialogs.Object).InvokeAsync("CONFIRM --one-button")).ShouldHaveSingleOk();
 
@@ -52,7 +52,8 @@ public sealed class DialogCommandHandlerTests {
   public async Task Confirm_true_returns_ok() {
     using var _ = SessionStateScope.Create();
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
-    dialogs.Setup(service => service.Confirm("Pinentry for Windows", "Enter password for GPG key", "OK", "Cancel")).Returns(true);
+    dialogs.Setup(service => service.Confirm("Pinentry for Windows", "Enter password for GPG key", "OK", "Cancel", 0))
+      .Returns(DialogResponse.Accepted);
 
     (await new ConfirmCommandHandler(dialogs.Object).InvokeAsync("CONFIRM")).ShouldHaveSingleOk();
   }
@@ -65,7 +66,7 @@ public sealed class DialogCommandHandlerTests {
     SessionState.OkButtonText = "&Approve";
     SessionState.CancelButtonText = "&Deny";
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
-    dialogs.Setup(service => service.Confirm("Title", "Description", "&Approve", "&Deny")).Returns(true);
+    dialogs.Setup(service => service.Confirm("Title", "Description", "&Approve", "&Deny", 0)).Returns(DialogResponse.Accepted);
 
     (await new ConfirmCommandHandler(dialogs.Object).InvokeAsync("CONFIRM")).ShouldHaveSingleOk();
 
@@ -76,8 +77,49 @@ public sealed class DialogCommandHandlerTests {
   public async Task Confirm_false_returns_cancelled_error() {
     using var _ = SessionStateScope.Create();
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
-    dialogs.Setup(service => service.Confirm("Pinentry for Windows", "Enter password for GPG key", "OK", "Cancel")).Returns(false);
+    dialogs.Setup(service => service.Confirm("Pinentry for Windows", "Enter password for GPG key", "OK", "Cancel", 0))
+      .Returns(DialogResponse.Cancelled);
 
     (await new ConfirmCommandHandler(dialogs.Object).InvokeAsync("CONFIRM")).ShouldHaveSingleError(ExitCode.CANCELLED);
+  }
+
+  [Fact]
+  public async Task Message_passes_timeout_and_returns_timeout_error() {
+    using var _ = SessionStateScope.Create();
+    SessionState.Title = "Title";
+    SessionState.Timeout = 3;
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+    dialogs.Setup(service => service.ShowMessage("Title", "Command message", 3)).Returns(DialogResponse.TimedOut);
+
+    (await new MessageCommandHandler(dialogs.Object).InvokeAsync("MESSAGE Command message")).ShouldHaveSingleError(ExitCode.TIMEOUT);
+
+    dialogs.VerifyAll();
+  }
+
+  [Fact]
+  public async Task Confirm_one_button_passes_timeout_and_returns_timeout_error() {
+    using var _ = SessionStateScope.Create();
+    SessionState.Title = "Title";
+    SessionState.Description = "Description";
+    SessionState.Timeout = 3;
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+    dialogs.Setup(service => service.ShowMessage("Title", "Description", 3)).Returns(DialogResponse.TimedOut);
+
+    (await new ConfirmCommandHandler(dialogs.Object).InvokeAsync("CONFIRM --one-button")).ShouldHaveSingleError(ExitCode.TIMEOUT);
+
+    dialogs.VerifyAll();
+  }
+
+  [Fact]
+  public async Task Confirm_passes_timeout_and_returns_timeout_error() {
+    using var _ = SessionStateScope.Create();
+    SessionState.Timeout = 3;
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+    dialogs.Setup(service => service.Confirm("Pinentry for Windows", "Enter password for GPG key", "OK", "Cancel", 3))
+      .Returns(DialogResponse.TimedOut);
+
+    (await new ConfirmCommandHandler(dialogs.Object).InvokeAsync("CONFIRM")).ShouldHaveSingleError(ExitCode.TIMEOUT);
+
+    dialogs.VerifyAll();
   }
 }

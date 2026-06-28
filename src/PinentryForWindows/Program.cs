@@ -1,13 +1,22 @@
-﻿// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
 // See the LICENSE file in the repository root for full license text.
 
 using AssuanLibrary.Client;
 using AssuanLibrary.Logging;
 using AssuanLibrary.Server;
+using PinentryForWindows.Cli;
 using PinentryForWindows.Commands;
+using PinentryForWindows.Configuration;
 using PinentryForWindows.Logging;
 using PinentryForWindows.Transport;
 using PinentryForWindows.Transport.Endpoints;
+
+if (args.Length > 0) {
+  AppConfiguration.Load();
+  return await CliDispatcher.RunAsync(args);
+}
+
+AppConfiguration.Load();
 
 using var cts = new CancellationTokenSource();
 
@@ -63,3 +72,4 @@ else {
 }
 
 await serverTask;
+return 0;

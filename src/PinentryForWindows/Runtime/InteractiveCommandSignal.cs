@@ -8,7 +8,7 @@ internal sealed class InteractiveCommandSignal {
   private readonly TaskCompletionSource _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
   /// <summary>
-  ///   Signals that the interactive command has completed. This will unblock any threads waiting on <see cref="Wait"/> or <see cref="WaitAsync"/>.
+  ///   Signals that the interactive command has completed. This will unblock any threads waiting on <see cref="Wait" /> or <see cref="WaitAsync" />.
   /// </summary>
   public void Set() {
     _tcs.TrySetResult();
@@ -16,13 +16,13 @@ internal sealed class InteractiveCommandSignal {
   }
 
   /// <summary>
-  ///  Waits for the interactive command to complete. This will block the calling thread until <see cref="Set"/> is called.
+  ///   Waits for the interactive command to complete. This will block the calling thread until <see cref="Set" /> is called.
   /// </summary>
   public void Wait()
     => _event.Wait();
 
   /// <summary>
-  ///   Asynchronously waits for the interactive command to complete. This will return a task that completes when <see cref="Set"/> is called.
+  ///   Asynchronously waits for the interactive command to complete. This will return a task that completes when <see cref="Set" /> is called.
   /// </summary>
   /// <returns>A task that completes when the interactive command is signaled.</returns>
   public Task WaitAsync()

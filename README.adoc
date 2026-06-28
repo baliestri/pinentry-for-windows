@@ -3,6 +3,10 @@
 `Pinentry For Windows` is a native Windows pinentry implementation for GnuPG.
 It speaks the Assuan protocol expected by `gpg-agent`, reads commands from standard input, writes Assuan responses to standard output, and uses Windows-native UI for passphrase and confirmation prompts.
 
+== Preview
+
+image::.github/images/CredentialManagerPrompt.png[]
+
 == Installation
 
 Install the latest release with PowerShell:
@@ -15,6 +19,29 @@ irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/instal
 The installer detects the current Windows architecture, downloads the matching executable from the latest GitHub release, installs it into the GnuPG `bindir`, updates `gpg-agent.conf`, and restarts `gpg-agent`.
 If `gpg-agent.conf` already has a `pinentry-program` entry, the installer asks before replacing it.
 
+Use a script block invocation when passing options to the streamed installer:
+
+[source,powershell]
+----
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/install.ps1))) -Update
+----
+
+Supported installer options:
+
+* `-Update` downloads the latest release and replaces the installed executable.
+* `-Uninstall` removes the installed executable and prompts before removing or restoring the `pinentry-program` setting.
+* `-NoRestartAgent` skips `gpg-agent` restart after configuration changes.
+* `-InstallDirectory <path>` installs to or uninstalls from a specific directory instead of the GnuPG `bindir`.
+
+Examples:
+
+[source,powershell]
+----
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/install.ps1))) -Update -NoRestartAgent
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/install.ps1))) -Uninstall
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/baliestri/pinentry-for-windows/main/install.ps1))) -InstallDirectory "$env:LOCALAPPDATA\PinentryForWindows"
+----
+
 == Features
 
 * Native Windows passphrase entry through `CredUIPromptForWindowsCredentials`.
@@ -22,13 +49,14 @@ If `gpg-agent.conf` already has a `pinentry-program` entry, the installer asks b
 * External passphrase cache support through Windows `PasswordVault` when GnuPG sends `OPTION allow-external-password-cache`.
 * Windows Hello gate for reading cached passphrases through `KeyCredentialManager`.
 * Best-effort cache behavior: cache read/store failures never prevent a normal prompt fallback.
+* User-controlled cache opt-in via a "Remember my credentials" checkbox, enabled through a local settings file.
 * Assuan payload logging with redaction enabled.
 * Diagnostic log file at `%LOCALAPPDATA%\PinentryForWindows\pinentry.log`.
 * Smart card description cleanup and cache-user extraction from `SETDESC` values.
 * Repeat-passphrase flow with mismatch warning and Assuan error response.
 * Console transport for the Assuan session over `stdin` and `stdout`.
 * Native AOT and trimming-ready Windows executable configuration.
-* Unit, process integration, protocol smoke, interactive UI, cache, and optional GPG smoke tests.
+* Unit, process integration, GPG agent compatibility replay, protocol smoke, interactive UI, cache, and optional GPG smoke tests.
 
 == How It Works
 
@@ -248,6 +276,56 @@ Cache cleanup uses `CLEARPASSPHRASE <key>` and removes `pfwcache:<key>`.
 Windows Hello is best-effort.
 If it is unavailable, cancelled, or fails, `GETPIN` falls back to a normal credential prompt.
 
+=== Smart Cards and Hardware Tokens
+
+When a smart card or hardware token (YubiKey, OpenPGP card, Nitrokey, or any CCID-compatible device) is in use, `gpg-agent` sends `SETKEYINFO --clear` before requesting the card PIN.
+This instructs Pinentry For Windows to skip all cache operations for that prompt.
+Windows Hello will not appear.
+
+The card PIN is not stored in Windows `PasswordVault`.
+Card authentication and PIN caching are managed internally by `gpg-agent` and its `scdaemon` component.
+The hardware token itself enforces PIN retry limits.
+
+The Windows Hello external cache applies only to software keys protected by a passphrase stored in a keyring file.
+To verify which path is active for a given operation, check `%LOCALAPPDATA%\PinentryForWindows\pinentry.log` and look for `SETKEYINFO` — a value of `--clear` means caching is disabled for that `GETPIN` call.
+
+The threat model, security goals, non-goals, known limitations, and follow-up hardening tasks are documented in link:docs/security-model.adoc[docs/security-model.adoc].
+GPG key identity sources, cache key construction, and display label rules are documented in link:docs/gpg-agent-key-identity.adoc[docs/gpg-agent-key-identity.adoc].
+
+== User Cache Opt-In
+
+By default, passphrase caching is controlled entirely by `gpg-agent` via `OPTION allow-external-password-cache`.
+When user cache opt-in is enabled, the passphrase prompt includes a native "Remember my credentials" checkbox.
+Checking the checkbox stores the passphrase in Windows `PasswordVault` using the same DPAPI-encrypted, Windows Hello-gated path as the standard cache.
+
+User cache opt-in is disabled by default and must be explicitly enabled.
+To enable it, create:
+
+[source,text]
+----
+%LOCALAPPDATA%\PinentryForWindows\settings.json
+----
+
+with the following content:
+
+[source,json]
+----
+{
+  "AllowUserCacheOptIn": true
+}
+----
+
+When enabled:
+
+* If a stable cache key is known (`SETKEYINFO` was sent), the prompt shows a "Remember my credentials" checkbox.
+* Checking the checkbox stores the passphrase in `PasswordVault` after the prompt succeeds.
+* Unchecking the checkbox (or leaving it unchecked) does not store the passphrase, regardless of `gpg-agent` settings.
+* Repeat-passphrase prompts never show the checkbox.
+* The checkbox does not appear when no cache key is available.
+
+The stored passphrase is protected identically to the standard cache path: DPAPI-encrypted at rest and gated by Windows Hello on the next cache read.
+Cache entries written by opt-in and by `gpg-agent`-managed caching share the same storage and are cleared by `CLEARPASSPHRASE`.
+
 == Smart Card And Metadata Parsing
 
 `SETDESC` recognizes metadata commonly sent by GnuPG and smart card flows.
@@ -287,6 +365,50 @@ OK
 
 If they do not match, a warning dialog is shown and the response is `ERR 83886194 PIN not repeated`.
 
+== CLI Commands
+
+`PinentryForWindows.exe` supports operational commands that exit without starting the Assuan server.
+
+=== Diagnostics
+
+[source,powershell]
+----
+PinentryForWindows.exe --check
+----
+
+Checks and reports the following:
+
+* Windows Hello support
+* Windows `PasswordVault` access and number of cached entries
+* Log directory writability
+* Settings file (`AllowUserCacheOptIn` value)
+* GnuPG `pinentry-program` configuration (requires `gpgconf` in `PATH`)
+
+Each item is reported as `[OK]`, `[WARN]`, or `[FAIL]`.
+Warnings do not affect the exit code.
+Exit code is `0` if all checks pass, `1` if any check fails.
+Passphrases and cached secrets are never printed.
+
+=== Cache Management
+
+Clear all cached passphrases owned by PinentryForWindows:
+
+[source,powershell]
+----
+PinentryForWindows.exe --clear-cache
+----
+
+Clear a specific cache entry by key (the same value as the argument to `SETKEYINFO`):
+
+[source,powershell]
+----
+PinentryForWindows.exe --clear-cache n/AABBCCDDEEFF0011
+----
+
+Only entries prefixed with `pfwcache:` in Windows `PasswordVault` are affected.
+Unrelated Windows credentials are never touched.
+Exit code is always `0`.
+
 == Logging
 
 Diagnostic logs are written to:
@@ -315,6 +437,7 @@ dotnet test PinentryForWindows.slnx
 
 The test project uses xUnit v3, Shouldly, Moq, and process-level integration tests.
 Parallelization is disabled because command handlers share session state.
+GPG agent compatibility replay tests are documented in link:docs/gpg-agent-compatibility-tests.adoc[docs/gpg-agent-compatibility-tests.adoc].
 
 Run protocol smoke tests through the PowerShell script:
 

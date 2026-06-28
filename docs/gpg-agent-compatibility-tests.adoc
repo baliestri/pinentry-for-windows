@@ -1,0 +1,130 @@
+= GPG Agent Compatibility Tests
+
+The compatibility suite exercises Pinentry For Windows with command sequences modeled after real `gpg-agent` sessions.
+It is designed to catch regressions in common GnuPG workflows without requiring UI interaction during normal test runs.
+
+== Default Replay Suite
+
+The always-on suite lives in `tests/PinentryForWindows.Tests/GpgAgentCompatibilityTests.cs` and runs with:
+
+[source,powershell]
+----
+dotnet test PinentryForWindows.slnx
+----
+
+These tests replay sanitized Assuan command sequences through the same command handlers used by the executable.
+Credential and dialog services are mocked, so the tests do not open CredUI, request Windows Hello, access hardware, or modify the user's real GnuPG configuration.
+
+Covered replay scenarios include:
+
+* decrypting a message with an external-cache miss
+* signing a message with an external-cache hit
+* generating a key with repeat-passphrase confirmation
+* smart-card style descriptions with `Number:` and `Holder:` metadata
+* clearing a cached passphrase with `CLEARPASSPHRASE`
+* cancellation returned as the GnuPG cancelled error
+* retry after a bad passphrase with `SETERROR`
+* repeat-passphrase mismatch returned as the not-confirmed error
+
+The replay suite asserts stable compatibility invariants such as cache-key construction, cache-user extraction, prompt retry behavior, and Assuan response codes.
+It intentionally avoids exact full prompt wording unless that wording is part of current behavior.
+
+== Optional Live GPG Smoke Tests
+
+The PowerShell smoke script can run a disposable-key GPG scenario when GnuPG is installed:
+
+[source,powershell]
+----
+pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Test-PinentryForWindows.ps1 -IncludeGpgKeyTests
+----
+
+The script creates a temporary `GNUPGHOME`, writes a temporary `gpg-agent.conf`, generates a throwaway key, signs a message, kills the temporary `gpg-agent`, and removes the temporary home during cleanup.
+It must not use or modify the user's real GnuPG home.
+
+Interactive prompt, Windows Hello cache, dialog, and cancellation checks are opt-in:
+
+[source,powershell]
+----
+pwsh -NoProfile -ExecutionPolicy Bypass -File tests/Test-PinentryForWindows.ps1 -Interactive
+----
+
+Additional switches include:
+
+[cols="1,3", options="header"]
+|===
+| Switch | Behavior
+
+| `-RequireWindowsHelloCache`
+| Fails the cache-hit scenario unless `GETPIN` returns `S PASSWORD_FROM_CACHE`.
+
+| `-IncludeDialogTests`
+| Runs manual `MESSAGE` and `CONFIRM --one-button` dialog checks.
+
+| `-IncludeCancelTests`
+| Runs a manual cancellation scenario for `GETPIN`.
+
+| `-IncludeGpgKeyTests`
+| Creates a temporary `GNUPGHOME`, generates a throwaway GPG key, signs a message, then cleans up.
+
+| `-IncludeDecryptTest`
+| Requires `-IncludeGpgKeyTests`. Adds an RSA encryption subkey and runs a live encrypt + decrypt scenario. The user must enter the PIN when GPG prompts to decrypt. Sets `default-cache-ttl` to 300 seconds when combined with `-IncludeCacheTests`.
+
+| `-IncludeCacheTests`
+| Requires `-IncludeGpgKeyTests`. Runs two additional scenarios: a cache-hit test (gpg-agent serves the passphrase from its internal cache — no PIN prompt expected) and a cache-clear test (agent is killed to flush the cache, then a fresh PIN prompt is expected). Sets `default-cache-ttl 300` instead of 1 second so the cache survives between scenarios.
+|===
+
+== Assuan Trace Capture
+
+After each live scenario (`-IncludeCacheTests`, `-IncludeDecryptTest`), a sanitized Assuan trace is written to the temporary `GNUPGHOME`:
+
+----
+{GNUPGHOME}/assuan-trace-cache-hit.txt
+{GNUPGHOME}/assuan-trace-cache-clear.txt
+{GNUPGHOME}/assuan-trace-decrypt.txt
+----
+
+The trace contains new lines appended to `%LOCALAPPDATA%\PinentryForWindows\pinentry.log` during the scenario.
+The user-entered PIN is replaced with `[pin]`.
+These traces can be used to construct new replay sequences for `GpgAgentCompatibilityTests.cs`.
+
+== Replay Tests vs Live Tests
+
+[cols="1,2,2", options="header"]
+|===
+| | Replay tests (C#) | Live tests (PowerShell)
+
+| Trigger
+| Always-on (`dotnet test`)
+| Opt-in (script switches)
+
+| Dependencies
+| None — no GPG, no UI, no Windows Hello
+| GnuPG in PATH; UI access for interactive scenarios
+
+| What they cover
+| Command handler behavior, cache logic, Assuan response codes, protocol correctness, error paths
+| Process lifetime, gpg-agent↔pinentry socket handshake, real credential dialogs, OS-level caching
+
+| When to add one
+| Behavior is testable via mocked `ICredentialService` / `IDialogService`
+| Requires real gpg-agent, CredUI, or Windows Hello interaction
+|===
+
+When a live run reveals a new command sequence worth preserving, copy the sanitized Assuan trace into a new test method in `GpgAgentCompatibilityTests.cs` using `GpgAgentReplay`.
+
+== Safety Rules For New Compatibility Tests
+
+New always-on tests should be replay based and non-interactive.
+They should mock credential and dialog services instead of launching Windows UI.
+
+New live GPG scenarios must:
+
+* use a temporary `GNUPGHOME`
+* generate only disposable keys
+* kill the temporary `gpg-agent` during cleanup
+* remove generated keys and temporary files during cleanup
+* be opt-in when they require UI, Windows Hello, hardware, or installed GnuPG tools
+* avoid logging passphrases or cached secret values
+
+Hardware-dependent smart-card tests should remain manual or explicitly opt-in.
+The default replay suite should cover smart-card command metadata without requiring a card reader or token.
