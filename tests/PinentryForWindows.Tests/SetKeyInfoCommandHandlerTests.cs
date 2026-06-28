@@ -3,7 +3,6 @@
 
 using PinentryForWindows.Commands;
 using PinentryForWindows.Tests.TestSupport;
-using Shouldly;
 
 namespace PinentryForWindows.Tests;
 

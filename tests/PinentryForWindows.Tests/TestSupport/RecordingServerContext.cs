@@ -7,8 +7,8 @@ using AssuanLibrary.Server.Abstractions;
 namespace PinentryForWindows.Tests.TestSupport;
 
 internal sealed class RecordingServerContext(CancellationToken cancellationToken = default) : IServerContext {
-  public IServerSession Session { get; } = new RecordingServerSession { CancellationToken = cancellationToken };
   public List<AssuanResponse> Responses { get; } = [];
+  public IServerSession Session { get; } = new RecordingServerSession { CancellationToken = cancellationToken };
 
   public void SendResponse(AssuanResponseCollection responseCollection)
     => Add(responseCollection);

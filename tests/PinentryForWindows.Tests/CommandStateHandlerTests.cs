@@ -1,9 +1,9 @@
 // Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
 // See the LICENSE file in the repository root for full license text.
 
+using AssuanLibrary.Server.Abstractions;
 using PinentryForWindows.Commands;
 using PinentryForWindows.Tests.TestSupport;
-using AssuanLibrary.Server.Abstractions;
 
 namespace PinentryForWindows.Tests;
 
@@ -146,7 +146,7 @@ public sealed class CommandStateHandlerTests {
       "SETCANCEL" => new SetCancelButtonCommandHandler(),
       "SETNOTOK" => new SetNotOkButtonCommandHandler(),
       "OPTION" => new OptionCommandHandler(),
-      _ => throw new ArgumentOutOfRangeException(nameof(commandLine), commandLine, null)
+      var _ => throw new ArgumentOutOfRangeException(nameof(commandLine), commandLine, null)
     };
 
     (await handler.InvokeAsync(commandLine)).ShouldHaveSingleError(ExitCode.UNKNOWN_VALUE);

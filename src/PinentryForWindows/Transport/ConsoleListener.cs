@@ -24,7 +24,7 @@ internal sealed class ConsoleListener : IAssuanListener {
   }
 
   /// <inheritdoc />
-  public ValueTask<IAssuanConnection> AcceptAsync(CancellationToken ct = new CancellationToken()) {
+  public ValueTask<IAssuanConnection> AcceptAsync(CancellationToken ct = new()) {
     if (_accepted) {
       throw new InvalidOperationException("ConsoleListener can only accept one connection.");
     }

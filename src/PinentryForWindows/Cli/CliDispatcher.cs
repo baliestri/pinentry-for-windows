@@ -13,7 +13,7 @@ internal static class CliDispatcher {
 
     return args[0] switch {
       "--check" => await DiagnosticCommand.RunAsync(cts.Token),
-      "--clear-cache" when args.Length == 1 => await ClearCacheCommand.RunAsync(keyInfo: null, cts.Token),
+      "--clear-cache" when args.Length == 1 => await ClearCacheCommand.RunAsync(null, cts.Token),
       "--clear-cache" when args.Length >= 2 => await ClearCacheCommand.RunAsync(args[1], cts.Token),
       var _ => PrintUsage(args[0])
     };

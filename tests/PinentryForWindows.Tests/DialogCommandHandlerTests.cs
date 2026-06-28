@@ -52,7 +52,8 @@ public sealed class DialogCommandHandlerTests {
   public async Task Confirm_true_returns_ok() {
     using var _ = SessionStateScope.Create();
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
-    dialogs.Setup(service => service.Confirm("Pinentry for Windows", "Enter password for GPG key", "OK", "Cancel", 0)).Returns(DialogResponse.Accepted);
+    dialogs.Setup(service => service.Confirm("Pinentry for Windows", "Enter password for GPG key", "OK", "Cancel", 0))
+      .Returns(DialogResponse.Accepted);
 
     (await new ConfirmCommandHandler(dialogs.Object).InvokeAsync("CONFIRM")).ShouldHaveSingleOk();
   }
@@ -76,7 +77,8 @@ public sealed class DialogCommandHandlerTests {
   public async Task Confirm_false_returns_cancelled_error() {
     using var _ = SessionStateScope.Create();
     var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
-    dialogs.Setup(service => service.Confirm("Pinentry for Windows", "Enter password for GPG key", "OK", "Cancel", 0)).Returns(DialogResponse.Cancelled);
+    dialogs.Setup(service => service.Confirm("Pinentry for Windows", "Enter password for GPG key", "OK", "Cancel", 0))
+      .Returns(DialogResponse.Cancelled);
 
     (await new ConfirmCommandHandler(dialogs.Object).InvokeAsync("CONFIRM")).ShouldHaveSingleError(ExitCode.CANCELLED);
   }

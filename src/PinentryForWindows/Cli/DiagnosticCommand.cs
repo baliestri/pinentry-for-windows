@@ -2,9 +2,9 @@
 // See the LICENSE file in the repository root for full license text.
 
 using System.Diagnostics;
+using Windows.Security.Credentials;
 using PinentryForWindows.Configuration;
 using PinentryForWindows.Platform.Windows;
-using Windows.Security.Credentials;
 
 namespace PinentryForWindows.Cli;
 
