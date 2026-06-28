@@ -137,7 +137,10 @@ internal static class DiagnosticCommand {
     var configured = parts.Length > 1 ? parts[1] : string.Empty;
     var thisExe = Environment.ProcessPath ?? string.Empty;
 
-    if (string.Equals(configured, thisExe, StringComparison.OrdinalIgnoreCase)) {
+    var normalizedConfigured = configured.Replace('/', Path.DirectorySeparatorChar);
+    var normalizedThis = thisExe.Replace('/', Path.DirectorySeparatorChar);
+
+    if (string.Equals(normalizedConfigured, normalizedThis, StringComparison.OrdinalIgnoreCase)) {
       Ok($"GnuPG: pinentry-program = {configured}");
       return 0;
     }
