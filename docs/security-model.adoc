@@ -182,6 +182,9 @@ The following conditions all produce the same outcome: the cache is skipped and 
 | `SETKEYINFO` is empty or not set
 | No cache key available. Lookup and store both skipped.
 
+| `SETKEYINFO --clear` received (smart card or hardware token PIN request)
+| `gpg-agent` explicitly cleared the key info. Functionally equivalent to `SETKEYINFO` not sent. No `PasswordVault` access attempted. No Windows Hello prompt. PIN caching is managed internally by `gpg-agent` and `scdaemon`.
+
 | `SETERROR` was sent before `GETPIN`
 | Cache lookup skipped for that `GETPIN` call. Normal prompt shown immediately.
 

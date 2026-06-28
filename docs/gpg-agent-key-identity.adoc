@@ -148,30 +148,71 @@ The credential user shown in the Windows credential UI is chosen in this order:
 
 == Flows by Operation
 
-[cols="2,1,3", options="header"]
+[cols="2,1,1,3", options="header"]
 |===
-| Operation | SETKEYINFO prefix | Notes
+| Operation | SETKEYINFO sent | Cache active | Notes
 
 | OpenPGP signing
 | `n/[keygrip]`
-| Uses signing subkey keygrip
+| Yes
+| Uses signing subkey keygrip. Passphrase stored in PasswordVault after first entry; Windows Hello gates subsequent reads.
 
 | OpenPGP decryption
 | `n/[keygrip]`
-| Uses encryption subkey keygrip
+| Yes
+| Uses encryption subkey keygrip. Same caching path as signing.
 
 | SSH authentication
 | `s/[keygrip]`
-| `gpg-agent` acts as SSH agent; separate cache entry from OpenPGP operations on same key
+| Yes
+| `gpg-agent` acts as SSH agent. Separate cache entry from OpenPGP operations on the same underlying key material.
 
-| Smart card PIN
-| `n/[keygrip]` or `--clear`
-| Some smart card flows send `--clear` if caching is disabled; card serial/holder metadata appears in SETDESC
+| Smart card / hardware token PIN
+| `--clear`
+| No
+| `gpg-agent` explicitly clears key info before requesting the card PIN. No PasswordVault access. No Windows Hello. PIN caching is managed internally by `scdaemon`.
 
 | Key generation
 | Not sent
-| No SETKEYINFO in key generation flow; repeat-passphrase mode used instead; no cache entry written
+| No
+| Repeat-passphrase mode is used instead. No cache entry is written during generation.
 |===
+
+== Cache Behavior and Smart Cards
+
+=== Why Windows Hello Does Not Appear for Smart Card Operations
+
+`gpg-agent` sends `SETKEYINFO --clear` immediately before a `GETPIN` request when the operation involves a smart card or hardware token PIN.
+This is intentional behavior on the `gpg-agent` side: the card hardware enforces PIN authentication and retry limits independently, and the PIN should not be cached or gated by a software authentication layer external to the agent.
+
+When Pinentry For Windows receives `SETKEYINFO --clear`, it sets `SessionState.KeyInfo` to empty.
+With no cache key available, the `GETPIN` handler skips `PasswordVault` lookup entirely and opens the credential prompt directly.
+Windows Hello is never called.
+
+This applies to all hardware token operations routed through `scdaemon`: YubiKey, OpenPGP card, Nitrokey, and other CCID-compatible tokens.
+
+=== Confirming Which Path Is Active
+
+To verify whether caching is active for a given GPG operation, check the Assuan log at `%LOCALAPPDATA%\PinentryForWindows\pinentry.log` immediately after the operation.
+
+A soft key passphrase request includes:
+[source,text]
+----
+OPTION allow-external-password-cache
+SETKEYINFO n/FD692BD59D6640A84C8422573D469F84F3B98E53
+GETPIN
+----
+
+A smart card PIN request includes:
+[source,text]
+----
+OPTION allow-external-password-cache
+SETKEYINFO --clear
+GETPIN
+----
+
+In both cases `gpg-agent` sends `OPTION allow-external-password-cache`, so the presence of that option alone does not indicate that caching will occur.
+The `SETKEYINFO` value immediately before `GETPIN` determines whether a cache key is available.
 
 == What Pinentry Cannot Know
 

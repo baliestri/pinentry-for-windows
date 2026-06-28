@@ -276,6 +276,19 @@ Cache cleanup uses `CLEARPASSPHRASE <key>` and removes `pfwcache:<key>`.
 Windows Hello is best-effort.
 If it is unavailable, cancelled, or fails, `GETPIN` falls back to a normal credential prompt.
 
+=== Smart Cards and Hardware Tokens
+
+When a smart card or hardware token (YubiKey, OpenPGP card, Nitrokey, or any CCID-compatible device) is in use, `gpg-agent` sends `SETKEYINFO --clear` before requesting the card PIN.
+This instructs Pinentry For Windows to skip all cache operations for that prompt.
+Windows Hello will not appear.
+
+The card PIN is not stored in Windows `PasswordVault`.
+Card authentication and PIN caching are managed internally by `gpg-agent` and its `scdaemon` component.
+The hardware token itself enforces PIN retry limits.
+
+The Windows Hello external cache applies only to software keys protected by a passphrase stored in a keyring file.
+To verify which path is active for a given operation, check `%LOCALAPPDATA%\PinentryForWindows\pinentry.log` and look for `SETKEYINFO` — a value of `--clear` means caching is disabled for that `GETPIN` call.
+
 The threat model, security goals, non-goals, known limitations, and follow-up hardening tasks are documented in link:docs/security-model.adoc[docs/security-model.adoc].
 GPG key identity sources, cache key construction, and display label rules are documented in link:docs/gpg-agent-key-identity.adoc[docs/gpg-agent-key-identity.adoc].
 
