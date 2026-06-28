@@ -942,13 +942,14 @@ function Invoke-OptionalGpgKeyTests {
 
   [void] (Invoke-CheckedCommand `
       -FilePath $gpg `
-      -Arguments @('--homedir', $gpgHome, '--batch', '--quick-generate-key', $uid, 'rsa2048', 'sign', '1d') `
-      -Description 'gpg temporary key generation' `
+      -Arguments @('--homedir', $gpgHome, '--batch', '--pinentry-mode', 'loopback',
+                   '--passphrase', $ExpectedPin, '--quick-generate-key', $uid, 'rsa2048', 'sign', '1d') `
+      -Description 'gpg temporary key generation (passphrase protected)' `
       -Environment $envVars)
 
   $list = Invoke-CheckedCommand `
     -FilePath $gpg `
-    -Arguments @('--homedir', $gpgHome, '--with-colons', '--list-secret-keys') `
+    -Arguments @('--homedir', $gpgHome, '--with-colons', '--with-keygrip', '--list-secret-keys') `
     -Description 'gpg list generated secret keys' `
     -Environment $envVars
 
@@ -959,6 +960,12 @@ function Invoke-OptionalGpgKeyTests {
         [void] $Script:CreatedGpgFingerprints.Add($parts[9])
       }
     }
+    if ($line.StartsWith('grp:')) {
+      $parts = $line.Split(':')
+      if ($parts.Length -gt 9 -and -not [string]::IsNullOrWhiteSpace($parts[9])) {
+        [void] $Script:CacheKeysToClear.Add("n/$($parts[9])")
+      }
+    }
   }
 
   Assert-True ($Script:CreatedGpgFingerprints.Count -gt 0) 'GPG key was generated but no fingerprint was found for cleanup.'
@@ -966,7 +973,8 @@ function Invoke-OptionalGpgKeyTests {
   if ($IncludeDecryptTest) {
     [void] (Invoke-CheckedCommand `
         -FilePath $gpg `
-        -Arguments @('--homedir', $gpgHome, '--batch', '--quick-add-key',
+        -Arguments @('--homedir', $gpgHome, '--batch', '--pinentry-mode', 'loopback',
+                     '--passphrase', $ExpectedPin, '--quick-add-key',
                      $Script:CreatedGpgFingerprints[0], 'rsa2048', 'encr', '1d') `
         -Description 'gpg add encryption subkey for decrypt test' `
         -Environment $envVars)
@@ -975,10 +983,11 @@ function Invoke-OptionalGpgKeyTests {
   $messagePath = Join-Path $gpgHome 'message.txt'
   Set-Content -Path $messagePath -Value "pinentry smoke test $Script:RunId" -Encoding ascii
 
+  Write-Host "   ACTION: Enter '$ExpectedPin' when the credential prompt appears." -ForegroundColor Yellow
   [void] (Invoke-CheckedCommand `
       -FilePath $gpg `
       -Arguments @('--homedir', $gpgHome, '--local-user', $Script:CreatedGpgFingerprints[0], '--detach-sign', $messagePath) `
-      -Description 'gpg detach-sign smoke test' `
+      -Description 'gpg detach-sign smoke test (PIN prompt expected)' `
       -Environment $envVars)
 
   if ($IncludeCacheTests) {
