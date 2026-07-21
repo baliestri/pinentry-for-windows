@@ -138,7 +138,14 @@ internal sealed class CredentialService : ICredentialService {
               CredentialManager.PromptForWindowsCredentialsFlag.CredUiWinInCredOnly
     };
 
-    var result = CredentialManager.PromptForWindowsCredentials(options, lockedUserName, string.Empty);
+    CredentialManager.PromptCredentialsResult? result;
+    try {
+      result = CredentialManager.PromptForWindowsCredentials(options, lockedUserName, string.Empty);
+    }
+    catch {
+      return null;
+    }
+
     if (result is null ||
         string.IsNullOrWhiteSpace(result.Password)) {
       return null;
@@ -159,7 +166,14 @@ internal sealed class CredentialService : ICredentialService {
               CredentialManager.PromptForWindowsCredentialsFlag.CredUiWinCheckbox
     };
 
-    var result = CredentialManager.PromptForWindowsCredentials(options, lockedUserName, string.Empty);
+    CredentialManager.PromptCredentialsResult? result;
+    try {
+      result = CredentialManager.PromptForWindowsCredentials(options, lockedUserName, string.Empty);
+    }
+    catch {
+      return null;
+    }
+
     if (result is null ||
         string.IsNullOrWhiteSpace(result.Password)) {
       return null;

@@ -313,6 +313,60 @@ public sealed class GpgAgentCompatibilityTests {
     credentials.VerifyAll();
   }
 
+  [Fact]
+  public async Task Smart_card_ssh_pin_request_with_clear_setkeyinfo_skips_cache_and_prompts() {
+    using var _ = SessionStateScope.Create();
+
+    string? promptMessage = null;
+    var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
+    credentials.Setup(service => service.PromptAsync("Pinentry", It.IsAny<string>(), "Bruno Sales (31 184 111)", It.IsAny<CancellationToken>()))
+      .Callback<string, string, string, CancellationToken>((_, message, _, _) => promptMessage = message)
+      .ReturnsAsync("card-pin");
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+    var replay = new GpgAgentReplay(credentials.Object, dialogs.Object);
+
+    await replay.SendOkAsync("OPTION allow-external-password-cache");
+    await replay.SendOkAsync("SETTITLE Pinentry");
+    await replay.SendOkAsync("SETDESC Please enter the PIN for your smart card:%0A%0ANumber: 31 184 111%0AHolder: Bruno Sales");
+    await replay.SendOkAsync("SETKEYINFO --clear");
+
+    var getPin = await replay.SendAsync("GETPIN");
+
+    getPin.TextLines().ShouldBe(["D card-pin", "OK"]);
+    SessionState.KeyInfo.ShouldBeEmpty();
+    promptMessage.ShouldNotBeNull();
+    promptMessage.ShouldContain("Please enter the PIN");
+    promptMessage.ShouldNotContain("Number:");
+    promptMessage.ShouldNotContain("Holder:");
+    credentials.Verify(service => service.TryGetCachedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+      Times.Never);
+    credentials.VerifyAll();
+  }
+
+  [Fact]
+  public async Task Smart_card_pin_request_with_minimal_sequence_uses_session_defaults() {
+    using var _ = SessionStateScope.Create();
+
+    var credentials = new Mock<ICredentialService>(MockBehavior.Strict);
+    credentials.Setup(service
+        => service.PromptAsync("Pinentry for Windows", It.IsAny<string>(), "Pinentry for Windows", It.IsAny<CancellationToken>()))
+      .ReturnsAsync("card-pin");
+    var dialogs = new Mock<IDialogService>(MockBehavior.Strict);
+    var replay = new GpgAgentReplay(credentials.Object, dialogs.Object);
+
+    await replay.SendOkAsync("SETKEYINFO --clear");
+
+    var getPin = await replay.SendAsync("GETPIN");
+
+    getPin.TextLines().ShouldBe(["D card-pin", "OK"]);
+    SessionState.KeyInfo.ShouldBeEmpty();
+    credentials.Verify(service => service.TryGetCachedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    credentials.Verify(service => service.StoreAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+      Times.Never);
+    credentials.VerifyAll();
+  }
+
   private sealed class GpgAgentReplay(ICredentialService credentialService, IDialogService dialogService) {
     public async Task<RecordingServerContext> SendAsync(string commandLine) {
       var handler = CreateHandler(commandLine);

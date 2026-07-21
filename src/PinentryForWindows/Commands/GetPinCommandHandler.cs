@@ -63,80 +63,90 @@ internal sealed class GetPinCommandHandler(ICredentialService credentialService,
     var promptSignal = InteractivePromptCoordinator.Begin();
 
     try {
-      string? password;
-      var userOptedIn = false;
+      try {
+        string? password;
+        var userOptedIn = false;
 
-      if (showSaveCheckbox) {
-        var result = await credentialService.PromptWithSaveCheckboxAsync(
-          SessionState.Title,
-          promptMessage,
-          credentialUser,
-          serverContext.Session.CancellationToken);
+        if (showSaveCheckbox) {
+          var result = await credentialService.PromptWithSaveCheckboxAsync(
+            SessionState.Title,
+            promptMessage,
+            credentialUser,
+            serverContext.Session.CancellationToken);
 
-        if (result is null) {
-          var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
-          await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
-          return;
+          if (result is null) {
+            var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
+            await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
+            return;
+          }
+
+          password = result.Password;
+          userOptedIn = result.SaveChecked;
+        }
+        else {
+          password = await credentialService.PromptAsync(
+            SessionState.Title,
+            promptMessage,
+            credentialUser,
+            serverContext.Session.CancellationToken);
+
+          if (password is null) {
+            var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
+            await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
+            return;
+          }
         }
 
-        password = result.Password;
-        userOptedIn = result.SaveChecked;
+        if (SessionState.RepeatPassphrase) {
+          var passwordRepeat = await credentialService.PromptAsync(
+            SessionState.Title + " - Repeat",
+            SessionState.RepeatDescription,
+            credentialUser,
+            serverContext.Session.CancellationToken);
+
+          if (passwordRepeat is null) {
+            var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
+            await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
+            return;
+          }
+
+          if (!string.Equals(password, passwordRepeat, StringComparison.Ordinal)) {
+            dialogService.ShowWarning(SessionState.Title, SessionState.RepeatError);
+
+            var response = AssuanResponse.Error(ExitCode.NOT_CONFIRMED, "PIN not repeated");
+            await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
+            return;
+          }
+
+          var repeatedResponseCollection = AssuanResponseCollection.Create(
+            AssuanResponse.Status("PIN_REPEATED"),
+            AssuanResponse.Data(password),
+            AssuanResponse.Ok());
+
+          await serverContext.SendResponseAsync(repeatedResponseCollection, serverContext.Session.CancellationToken);
+        }
+        else {
+          var responseCollection = AssuanResponseCollection.Create(AssuanResponse.Data(password), AssuanResponse.Ok());
+          await serverContext.SendResponseAsync(responseCollection, serverContext.Session.CancellationToken);
+        }
+
+        if ((SessionState.ExternalPassphraseCache || userOptedIn) &&
+            !string.IsNullOrWhiteSpace(cacheKey)) {
+          try {
+            await credentialService.StoreAsync(cacheKey, credentialUser, password);
+          }
+          catch {
+            // Best-effort; do not fail GETPIN if caching fails.
+          }
+        }
       }
-      else {
-        password = await credentialService.PromptAsync(
-          SessionState.Title,
-          promptMessage,
-          credentialUser,
-          serverContext.Session.CancellationToken);
-
-        if (password is null) {
-          var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
-          await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
-          return;
-        }
+      catch (OperationCanceledException) {
+        var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
+        await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
       }
-
-      if (SessionState.RepeatPassphrase) {
-        var passwordRepeat = await credentialService.PromptAsync(
-          SessionState.Title + " - Repeat",
-          SessionState.RepeatDescription,
-          credentialUser,
-          serverContext.Session.CancellationToken);
-
-        if (passwordRepeat is null) {
-          var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
-          await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
-          return;
-        }
-
-        if (!string.Equals(password, passwordRepeat, StringComparison.Ordinal)) {
-          dialogService.ShowWarning(SessionState.Title, SessionState.RepeatError);
-
-          var response = AssuanResponse.Error(ExitCode.NOT_CONFIRMED, "PIN not repeated");
-          await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
-          return;
-        }
-
-        var repeatedResponseCollection = AssuanResponseCollection.Create(
-          AssuanResponse.Status("PIN_REPEATED"),
-          AssuanResponse.Data(password),
-          AssuanResponse.Ok());
-
-        await serverContext.SendResponseAsync(repeatedResponseCollection, serverContext.Session.CancellationToken);
-      }
-      else {
-        var responseCollection = AssuanResponseCollection.Create(AssuanResponse.Data(password), AssuanResponse.Ok());
-        await serverContext.SendResponseAsync(responseCollection, serverContext.Session.CancellationToken);
-      }
-
-      if ((SessionState.ExternalPassphraseCache || userOptedIn) &&
-          !string.IsNullOrWhiteSpace(cacheKey)) {
-        try {
-          await credentialService.StoreAsync(cacheKey, credentialUser, password);
-        }
-        catch {
-          // Best-effort; do not fail GETPIN if caching fails.
-        }
+      catch (Exception) {
+        var response = AssuanResponse.Error(ExitCode.CANCELLED, "cancelled");
+        await serverContext.SendResponseAsync(response, serverContext.Session.CancellationToken);
       }
     }
     finally {
