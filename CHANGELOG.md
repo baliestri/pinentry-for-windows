@@ -1,5 +1,11 @@
 # Pinentry For Windows Changelog
 
+## [1.2.0](https://github.com/baliestri/pinentry-for-windows/compare/v1.1.0..v1.2.0) - 2026-07-21
+
+### 🐛 Bug Fixes
+
+- *(getpin)* Catch credential prompt exceptions to prevent silent connection drop - ([f87819e](https://github.com/baliestri/pinentry-for-windows/commit/f87819e84d58a4b530c154b75cb33ff809f35016))
+
 ## [1.1.0](https://github.com/baliestri/pinentry-for-windows/compare/v1.0.0..v1.1.0) - 2026-06-28
 
 ### ⛰️  Features
