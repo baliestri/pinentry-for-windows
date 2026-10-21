@@ -329,6 +329,7 @@ still request an additional Hello operation; users should reject unexpected veri
 Recognized `OPTION` values are `allow-external-password-cache`, `default-ok`, `default-cancel`, `default-notok`, and
 `default-prompt`. `grab`, `no-grab`, and unknown options are accepted without changing the Windows credential window.
 The relay forwards Assuan bytes without interpreting them; diagnostics never enter protocol stdout.
+Local Windows sessions decode dialog text as UTF-8 first, then fall back to the active Windows ANSI code page for localized GnuPG labels. This supports agents that mix UTF-8 key descriptions with native-encoded prompts. WSL broker sessions keep UTF-8 decoding, and key identifiers never use the text fallback.
 
 `SETKEYINFO --clear` disables cache eligibility for the current card/token request. A key with a stable 40-hex-digit
 grip, optionally prefixed by `n/`, `s/`, or `u/`, may be eligible for software-key caching. `SETERROR` suppresses one

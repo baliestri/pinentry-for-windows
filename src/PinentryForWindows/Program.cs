@@ -2,6 +2,7 @@
 // See the LICENSE file in the repository root for full license text.
 
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using PinentryForWindows.Broker;
 using PinentryForWindows.Cache;
 using PinentryForWindows.Cli;
@@ -63,8 +64,10 @@ try {
   }
 
   VerboseLog.Write(VerboseEvent.LocalSessionStarted);
+  Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+  var nativeEncoding = Encoding.GetEncoding(0, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
   await PinentryProtocol.RunAsync(new StandardIoDuplexStream(Console.OpenStandardInput(), Console.OpenStandardOutput()),
-    "windows", true, new UiCoordinator(), PinentryPaths.CreateCache(), stop.Token, productVersion);
+    "windows", true, new UiCoordinator(), PinentryPaths.CreateCache(), stop.Token, productVersion, nativeEncoding);
   return 0;
 }
 catch (OperationCanceledException) {

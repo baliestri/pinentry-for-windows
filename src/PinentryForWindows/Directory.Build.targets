@@ -8,9 +8,10 @@
 
     <PropertyGroup>
       <RegexGitVersion>^v([^-]+)-(\d+)-g([0-9a-f]+)$</RegexGitVersion>
-      <GitVersion Condition="'$([System.Text.RegularExpressions.Regex]::IsMatch($(GitVersion), $(RegexGitVersion)))' == 'false'">v2.0.0-0-g0000000</GitVersion>
-      <FileVersion>$([System.Text.RegularExpressions.Regex]::Match($(GitVersion), $(RegexGitVersion)).Groups[1].Value)</FileVersion>
+      <GitVersion Condition="'$([System.Text.RegularExpressions.Regex]::IsMatch($(GitVersion), $(RegexGitVersion)))' == 'false'">v$(VersionPrefix)-0-g0000000</GitVersion>
       <BuildVersion>$([System.Text.RegularExpressions.Regex]::Match($(GitVersion), $(RegexGitVersion)).Groups[1].Value)</BuildVersion>
+      <BuildVersion Condition="$([MSBuild]::VersionLessThan('$(BuildVersion)', '$(VersionPrefix)'))">$(VersionPrefix)</BuildVersion>
+      <FileVersion>$(BuildVersion).0</FileVersion>
       <AdditionalCommits>$([System.Text.RegularExpressions.Regex]::Match($(GitVersion), $(RegexGitVersion)).Groups[2].Value)</AdditionalCommits>
       <CommitSHA>$([System.Text.RegularExpressions.Regex]::Match($(GitVersion), $(RegexGitVersion)).Groups[3].Value)</CommitSHA>
 

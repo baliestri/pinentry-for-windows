@@ -1,6 +1,7 @@
 // Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
 // See the LICENSE file in the repository root for full license text.
 
+using System.Text;
 using System.Text.RegularExpressions;
 using PinentryForWindows.Core.Contracts;
 
@@ -10,7 +11,8 @@ public sealed partial class PinentrySessionState(string origin,
   bool authenticated,
   IPinentryUi ui,
   IPinentryCache cache,
-  string productVersion) {
+  string productVersion,
+  Encoding? textFallbackEncoding = null) {
   private bool _cardDescription;
   private bool _keyInfoCleared;
   public string Origin { get; } = origin;
@@ -18,6 +20,7 @@ public sealed partial class PinentrySessionState(string origin,
   public IPinentryUi Ui { get; } = ui;
   public IPinentryCache Cache { get; } = cache;
   public string ProductVersion { get; } = productVersion;
+  public Encoding? TextFallbackEncoding { get; } = textFallbackEncoding;
 
   public string Title { get; set; } = string.Empty;
   public string Description { get; set; } = string.Empty;

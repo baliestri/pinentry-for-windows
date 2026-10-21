@@ -214,9 +214,93 @@ public sealed class PinentryProtocolTests {
     Assert.Contains("ERR 67109144", output);
   }
 
+  [Fact]
+  public async Task Mixed_encoding_gpg_session_preserves_labels_description_and_cached_secret() {
+    var ui = new FakeUi("sésame", true);
+    var cache = new FakeCache();
+    var commands = Encoding.ASCII.GetBytes($"OPTION allow-external-password-cache\nSETKEYINFO n/{GRIP}\n")
+      .Concat(Encoding.Latin1.GetBytes("OPTION default-prompt=Code personnel\u00a0:\n"))
+      .Concat(Encoding.UTF8.GetBytes("SETDESC Déverrouiller la clef%0Acréée en 2026 🔑\n"))
+      .Concat(Encoding.Latin1.GetBytes("SETPROMPT Phrase secrète\u00a0:\nGETPIN\nGETPIN\nBYE\n"))
+      .ToArray();
+    var output = await RunAsync(commands, ui, cache, textFallbackEncoding: Encoding.Latin1);
+
+    Assert.DoesNotContain("ERR", output);
+    Assert.Contains("D sésame\nOK\nS PASSWORD_FROM_CACHE\nD sésame\nOK", output);
+    Assert.Equal("Phrase secrète\u00a0:", ui.LastPromptLabel);
+    Assert.Equal("Déverrouiller la clef\ncréée en 2026 🔑", ui.LastDescription);
+    Assert.Equal(1, ui.PromptCount);
+    Assert.Equal(1, cache.WriteCount);
+  }
+
+  [Theory]
+  [InlineData(1252, "Phrase secrète\u00a0: €")]
+  [InlineData(1251, "Пароль:")]
+  [InlineData(932, "パスワード:")]
+  public async Task Localized_prompts_use_the_configured_native_code_page(int codePage, string prompt) {
+    Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    var nativeEncoding = Encoding.GetEncoding(codePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+    var ui = new FakeUi("typed", false);
+    var commands = nativeEncoding.GetBytes($"OPTION default-prompt={prompt}\nGETPIN\nBYE\n");
+    var output = await RunAsync(commands, ui, new FakeCache(), textFallbackEncoding: nativeEncoding);
+
+    Assert.DoesNotContain("ERR", output);
+    Assert.Equal(prompt, ui.LastPromptLabel);
+  }
+
+  [Theory]
+  [InlineData("SETPROMPT Phrase secrète\u00a0:", "Phrase secrète\u00a0:")]
+  [InlineData("SETPROMPT Phrase secr%E8te%A0:", "Phrase secrète\u00a0:")]
+  public async Task Native_prompt_decoding_handles_raw_and_percent_escaped_bytes(string command, string expected) {
+    var ui = new FakeUi("typed", false);
+    var output = await RunAsync(Encoding.Latin1.GetBytes(command + "\nGETPIN\nBYE\n"), ui, new FakeCache(), textFallbackEncoding: Encoding.Latin1);
+
+    Assert.DoesNotContain("ERR", output);
+    Assert.Equal(expected, ui.LastPromptLabel);
+  }
+
+  [Fact]
+  public async Task Valid_utf8_prompt_takes_precedence_over_native_fallback() {
+    var ui = new FakeUi("typed", false);
+    var output = await RunAsync(Encoding.UTF8.GetBytes("SETPROMPT Phrase secrète\u00a0: 🔑\nGETPIN\nBYE\n"), ui, new FakeCache(), textFallbackEncoding: Encoding.Latin1);
+
+    Assert.DoesNotContain("ERR", output);
+    Assert.Equal("Phrase secrète\u00a0: 🔑", ui.LastPromptLabel);
+  }
+
+  [Fact]
+  public async Task Unused_localized_options_are_ignored_without_decoding_their_values() {
+    var output = await RunAsync(Encoding.Latin1.GetBytes("OPTION default-tt-visi=Rendre la phrase secrète visible\nBYE\n"), new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
+
+    Assert.DoesNotContain("ERR", output);
+  }
+
+  [Fact]
+  public async Task Sessions_without_native_fallback_reject_non_utf8_text() {
+    var output = await RunAsync(Encoding.Latin1.GetBytes("SETPROMPT Phrase secrète\nBYE\n"), new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
+
+    Assert.Contains("ERR 67109144 invalid value", output);
+  }
+
+  [Theory]
+  [InlineData("SETPROMPT invalid%")]
+  [InlineData("SETPROMPT invalid%GG")]
+  [InlineData("SETKEYINFO n/%E8")]
+  [InlineData("SETTIMEOUT %E8")]
+  [InlineData("CLEARPASSPHRASE %E8")]
+  public async Task Native_text_fallback_preserves_escape_and_identifier_validation(string command) {
+    var output = await RunAsync(Encoding.ASCII.GetBytes(command + "\nBYE\n"), new FakeUi("unused", false), new FakeCache(), textFallbackEncoding: Encoding.Latin1);
+
+    Assert.Contains("ERR 67109144", output);
+  }
+
   private static async Task<string> RunAsync(string commands, FakeUi ui, FakeCache cache, string origin = "windows") {
-    await using var stream = new ScriptedStream(Encoding.UTF8.GetBytes(commands));
-    await PinentryProtocol.RunAsync(stream, origin, true, ui, cache, CancellationToken.None);
+    return await RunAsync(Encoding.UTF8.GetBytes(commands), ui, cache, origin);
+  }
+
+  private static async Task<string> RunAsync(byte[] commands, FakeUi ui, FakeCache cache, string origin = "windows", Encoding? textFallbackEncoding = null) {
+    await using var stream = new ScriptedStream(commands);
+    await PinentryProtocol.RunAsync(stream, origin, true, ui, cache, CancellationToken.None, textFallbackEncoding: textFallbackEncoding);
     return Encoding.UTF8.GetString(stream.Output);
   }
 
@@ -226,6 +310,7 @@ public sealed class PinentryProtocolTests {
     public string? LastTitle { get; private set; }
     public List<string> PromptTitles { get; } = [];
     public string? LastDescription { get; private set; }
+    public string? LastPromptLabel { get; private set; }
     public string? LastDialogTitle { get; private set; }
     public long LastGetPinTimestamp { get; private set; }
     public bool ShouldTimeOut { get; init; }
@@ -249,6 +334,7 @@ public sealed class PinentryProtocolTests {
       LastTitle = request.Title;
       PromptTitles.Add(request.Title);
       LastDescription = request.Description;
+      LastPromptLabel = request.PromptLabel;
       LastGetPinTimestamp = request.GetPinTimestamp;
       var secret = new SecretBuffer(4096);
       secret.Append(Encoding.UTF8.GetBytes(Passwords?.Dequeue() ?? password));
