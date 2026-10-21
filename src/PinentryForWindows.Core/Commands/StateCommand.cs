@@ -12,7 +12,8 @@ internal sealed class StateCommand(string name) : ICommandHandler<PinentrySessio
 
   public ValueTask HandleAsync(CommandContext<PinentrySessionState> context, CancellationToken ct) {
     var state = context.State;
-    var value = Name == "SETTIMEOUT" ? WireText.Decode(context.Arguments) : WireText.Require(context.Arguments);
+    var fallbackEncoding = Name is "SETKEYINFO" or "SETTIMEOUT" ? null : state.TextFallbackEncoding;
+    var value = Name == "SETTIMEOUT" ? WireText.Decode(context.Arguments) : WireText.Require(context.Arguments, fallbackEncoding);
     switch (Name) {
       case "SETTITLE":
         state.Title = value;

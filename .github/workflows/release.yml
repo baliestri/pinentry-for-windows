@@ -115,6 +115,7 @@ jobs:
     uses: ./.github/workflows/validate.yml
     with:
       source_ref: ${{ needs.prepare.outputs.candidate_sha }}
+      release_tag: ${{ inputs.version }}
       upload_assets: true
 
   promote:
@@ -179,10 +180,21 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout versioned CHANGELOG
+      - name: Checkout promoted release tag
         uses: actions/checkout@v5
         with:
-          ref: ${{ needs.prepare.outputs.candidate_sha }}
+          ref: refs/tags/${{ inputs.version }}
+
+      - name: Verify published tag matches validated commit
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$CANDIDATE_SHA" ]] || {
+            echo 'Release tag does not point to the validated commit.' >&2
+            exit 1
+          }
 
       - name: Download Windows x64 binary
         uses: actions/download-artifact@v4

@@ -15,7 +15,7 @@ internal sealed class DialogCommand(string name) : ICommandHandler<PinentrySessi
     var state = context.State;
     var raw = context.Arguments;
     var oneButton = Name == "CONFIRM" && raw.Span.SequenceEqual("--one-button"u8);
-    var description = Name == "MESSAGE" && !raw.IsEmpty ? WireText.Decode(raw) : state.Description;
+    var description = Name == "MESSAGE" && !raw.IsEmpty ? WireText.Decode(raw, state.TextFallbackEncoding) : state.Description;
     var request = new DialogRequest(state.Title, description, state.OkLabel,
       state.CancelLabel, oneButton || Name == "MESSAGE", state.TimeoutSeconds);
     try {

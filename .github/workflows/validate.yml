@@ -7,6 +7,11 @@ on:
         description: Commit to test and publish
         required: true
         type: string
+      release_tag:
+        description: Unpublished release tag to build locally (vMAJOR.MINOR.PATCH)
+        required: false
+        default: ''
+        type: string
       upload_assets:
         description: Upload validated binaries for the release job
         required: false
@@ -37,12 +42,25 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Prepare local release tag and build version
+        if: inputs.release_tag != '' || inputs.upload_assets
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CANDIDATE_SHA: ${{ inputs.source_ref }}
+        run: bash tools/prepare-release-build.sh "$RELEASE_TAG" "$CANDIDATE_SHA" >> "$GITHUB_ENV"
 
       - name: Install .NET 10
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - name: Test release version in an isolated shallow checkout
+        shell: bash
+        run: bash tests/Test-ReleaseVersion.sh
 
       - name: Test pinentry, installer and streamed broker setup
         run: |
@@ -68,6 +86,11 @@ jobs:
           $exe = Join-Path $env:RUNNER_TEMP "publish-$env:RUNTIME/pfw.exe"
           if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Native executable missing.' }
           & $exe --help | Out-Null
+          if ($env:RELEASE_VERSION) {
+            $expectedVersion = "$env:RELEASE_VERSION.0"
+            $actualVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion
+            if ($actualVersion -ne $expectedVersion) { throw "Wrong release file version: $actualVersion" }
+          }
 
           $start = [System.Diagnostics.ProcessStartInfo]::new($exe)
           $start.UseShellExecute = $false
@@ -85,6 +108,14 @@ jobs:
             $final = $process.StandardOutput.ReadLineAsync().WaitAsync($timeout).GetAwaiter().GetResult()
             if ($flavor -ne 'D pinentry-for-windows' -or $final -notmatch '^OK\b') {
               throw 'Invalid GETINFO response.'
+            }
+            if ($env:RELEASE_VERSION) {
+              $process.StandardInput.WriteLine('GETINFO version')
+              $version = $process.StandardOutput.ReadLineAsync().WaitAsync($timeout).GetAwaiter().GetResult()
+              $final = $process.StandardOutput.ReadLineAsync().WaitAsync($timeout).GetAwaiter().GetResult()
+              if ($version -ne "D $expectedVersion" -or $final -notmatch '^OK\b') {
+                throw "Wrong release protocol version: $version"
+              }
             }
             $process.StandardInput.WriteLine('BYE')
             $bye = $process.StandardOutput.ReadLineAsync().WaitAsync($timeout).GetAwaiter().GetResult()
@@ -137,7 +168,16 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Prepare local release tag and build version
+        if: inputs.release_tag != '' || inputs.upload_assets
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CANDIDATE_SHA: ${{ inputs.source_ref }}
+        run: bash tools/prepare-release-build.sh "$RELEASE_TAG" "$CANDIDATE_SHA" >> "$GITHUB_ENV"
 
       - name: Install .NET 10
         uses: actions/setup-dotnet@v5
@@ -153,6 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
+          bash tests/Test-ReleaseVersion.sh
           dotnet test tests/PinentryForWindows.Core.Tests/PinentryForWindows.Core.Tests.csproj -c Release
           dotnet test tests/PinentryForWindows.Relay.Tests/PinentryForWindows.Relay.Tests.csproj -c Release
           bash tests/Test-InstallerWsl.sh
