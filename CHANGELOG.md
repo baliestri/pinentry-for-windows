@@ -1,5 +1,18 @@
 # Pinentry For Windows Changelog
 
+## [2.0.1](https://github.com/baliestri/pinentry-for-windows/compare/v2.0.0..v2.0.1) - 2026-10-21
+
+### 🐛 Bug Fixes
+
+- *(ci)* Build release artifacts from the validated tag - ([b3e0b4a](https://github.com/baliestri/pinentry-for-windows/commit/b3e0b4a139c2ca28ab1ea5965e5c8f18c5937711))
+
+### ⚙️ Miscellaneous Tasks
+
+- *(build)* Remove fixed  version prefix - ([27e8843](https://github.com/baliestri/pinentry-for-windows/commit/27e8843dbd12298d3d770688b818e01edce6735f))
+
+## New Contributors ❤️
+
+* @EDM115 made their first contribution
 ## [2.0.0](https://github.com/baliestri/pinentry-for-windows/compare/1.2.1..v2.0.0) - 2026-10-11
 
 ### ⛰️  Features
