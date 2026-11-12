@@ -34,14 +34,14 @@ internal static class BrokerTls {
         EnabledSslProtocols = SslProtocols.Tls13,
         AllowRenegotiation = false,
         CertificateRevocationCheckMode = X509RevocationMode.NoCheck
-      }, ct);
+      }, ct).ConfigureAwait(false);
 
       return origin is not null
         ? new AuthenticatedBrokerStream(stream, origin)
         : throw new AuthenticationException("Client was not paired.");
     }
     catch {
-      await stream.DisposeAsync();
+      await stream.DisposeAsync().ConfigureAwait(false);
       throw;
     }
   }

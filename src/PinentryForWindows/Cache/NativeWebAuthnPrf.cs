@@ -12,6 +12,12 @@ namespace PinentryForWindows.Cache;
 internal sealed class NativeWebAuthnPrf : IPrfProvider {
   private const string RP_ID = "pinentry.baliestri.dev";
   private const string RP_NAME = "Pinentry for Windows";
+  private const string PUBLIC_KEY = "public-key";
+  private const string HASH_NAME = "SHA-256";
+  private const string HMAC_SECRET = "hmac-secret";
+  private const string CRED_PROTECT = "credProtect";
+  private const string USER_NAME = "Pinentry for Windows";
+  private const string DISPLAY_NAME = "Pinentry passphrase cache";
   private static readonly Lazy<bool> _available = new(CheckAvailability);
 
   public bool IsAvailable => _available.Value;
@@ -46,19 +52,11 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
     ct.ThrowIfCancellationRequested();
     var userId = RandomNumberGenerator.GetBytes(32);
     var clientData = ClientData("webauthn.create");
-    const string PUBLIC_KEY = "public-key";
-    const string HASH_NAME = "SHA-256";
-    const string HMAC_SECRET = "hmac-secret";
-    const string CRED_PROTECT = "credProtect";
-    const string USER_NAME = "Pinentry for Windows";
-    const string DISPLAY_NAME = "Pinentry passphrase cache";
 
     fixed (char* rpId = RP_ID, rpName = RP_NAME, publicKey = PUBLIC_KEY, hash = HASH_NAME,
            hmacId = HMAC_SECRET, protectId = CRED_PROTECT, userName = USER_NAME, displayName = DISPLAY_NAME)
     fixed (byte* userPtr = userId, clientPtr = clientData) {
-      var rp = new WEBAUTHN_RP_ENTITY_INFORMATION {
-        dwVersion = 1, pwszId = rpId, pwszName = rpName
-      };
+      var rp = new WEBAUTHN_RP_ENTITY_INFORMATION { dwVersion = 1, pwszId = rpId, pwszName = rpName };
       var user = new WEBAUTHN_USER_ENTITY_INFORMATION {
         dwVersion = 1, cbId = (uint)userId.Length, pbId = userPtr,
         pwszName = userName, pwszDisplayName = displayName
@@ -74,9 +72,7 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
         pbClientDataJSON = clientPtr, pwszHashAlgId = hash
       };
       BOOL enabled = true;
-      var policy = new WEBAUTHN_CRED_PROTECT_EXTENSION_IN {
-        dwCredProtect = 3, bRequireCredProtect = true
-      };
+      var policy = new WEBAUTHN_CRED_PROTECT_EXTENSION_IN { dwCredProtect = 3, bRequireCredProtect = true };
       var extensions = stackalloc WEBAUTHN_EXTENSION[2];
       extensions[0] = new WEBAUTHN_EXTENSION {
         pwszExtensionIdentifier = hmacId, cbExtension = (uint)sizeof(BOOL), pvExtension = &enabled
@@ -101,13 +97,7 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
         in rp, in user, in algorithms, in client, options, out var attestation);
       try {
         result.ThrowOnFailure();
-        if (attestation is null ||
-            attestation->pbCredentialId is null ||
-            attestation->cbCredentialId is 0 or > 1024) {
-          throw new InvalidDataException("WebAuthn returned an invalid credential ID.");
-        }
-
-        return new ReadOnlySpan<byte>(attestation->pbCredentialId, (int)attestation->cbCredentialId).ToArray();
+        return CredentialId(attestation);
       }
       finally {
         if (attestation is not null) {
@@ -121,12 +111,10 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
     ct.ThrowIfCancellationRequested();
     if (id.Length is < 1 or > 1024 ||
         salt.Length != 32) {
-      throw new ArgumentException("Invalid PRF input.");
+      throw new ArgumentException("Invalid PRF input.", nameof(id));
     }
 
     var clientData = ClientData("webauthn.get");
-    const string PUBLIC_KEY = "public-key";
-    const string HASH_NAME = "SHA-256";
     fixed (char* publicKey = PUBLIC_KEY, hash = HASH_NAME)
     fixed (byte* idPtr = id, saltPtr = salt, clientPtr = clientData) {
       var credential = new WEBAUTHN_CREDENTIAL {
@@ -156,20 +144,7 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
         RP_ID, in client, options, out var assertion);
       try {
         result.ThrowOnFailure();
-        if (assertion is null ||
-            assertion->pbAuthenticatorData is null ||
-            assertion->cbAuthenticatorData < 33 ||
-            (assertion->pbAuthenticatorData[32] & 0x04) == 0 ||
-            assertion->pHmacSecret is null ||
-            assertion->pHmacSecret->pbFirst is null ||
-            assertion->pHmacSecret->cbFirst != 32 ||
-            assertion->Credential.cbId != id.Length ||
-            assertion->Credential.pbId is null ||
-            !new ReadOnlySpan<byte>(assertion->Credential.pbId, id.Length).SequenceEqual(id)) {
-          throw new InvalidDataException("WebAuthn assertion lacks verified PRF output.");
-        }
-
-        return new ReadOnlySpan<byte>(assertion->pHmacSecret->pbFirst, 32).ToArray();
+        return VerifiedPrf(assertion, id);
       }
       finally {
         if (assertion is not null) {
@@ -182,6 +157,34 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
         }
       }
     }
+  }
+
+  private static unsafe byte[] CredentialId(WEBAUTHN_CREDENTIAL_ATTESTATION* attestation) {
+    if (attestation is null ||
+        attestation->pbCredentialId is null ||
+        attestation->cbCredentialId is 0 or > 1024) {
+      throw new InvalidDataException("WebAuthn returned an invalid credential ID.");
+    }
+
+    return new ReadOnlySpan<byte>(attestation->pbCredentialId, (int)attestation->cbCredentialId).ToArray();
+  }
+
+  /// <summary>Returns the PRF output only for a user-verified assertion of the requested credential.</summary>
+  private static unsafe byte[] VerifiedPrf(WEBAUTHN_ASSERTION* assertion, byte[] id) {
+    if (assertion is null ||
+        assertion->pbAuthenticatorData is null ||
+        assertion->cbAuthenticatorData < 33 ||
+        (assertion->pbAuthenticatorData[32] & 0x04) == 0 ||
+        assertion->pHmacSecret is null ||
+        assertion->pHmacSecret->pbFirst is null ||
+        assertion->pHmacSecret->cbFirst != 32 ||
+        assertion->Credential.cbId != id.Length ||
+        assertion->Credential.pbId is null ||
+        !new ReadOnlySpan<byte>(assertion->Credential.pbId, id.Length).SequenceEqual(id)) {
+      throw new InvalidDataException("WebAuthn assertion lacks verified PRF output.");
+    }
+
+    return new ReadOnlySpan<byte>(assertion->pHmacSecret->pbFirst, 32).ToArray();
   }
 
   private static Guid CancellationId() {

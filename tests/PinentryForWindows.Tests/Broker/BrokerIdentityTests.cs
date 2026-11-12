@@ -28,7 +28,7 @@ public sealed class BrokerIdentityTests {
       Assert.Throws<ArgumentException>(() => identity.ApproveClient(publicPath, "windows"));
       identity.ApproveClient(publicPath, "wsl:archlinux");
       Assert.StartsWith("wsl:archlinux#", identity.OriginFor(client));
-      Assert.Contains("archlinux", identity.PairedDistributions());
+      Assert.Contains("archlinux", identity.PairedDistributions(), StringComparer.Ordinal);
       identity.RevokeClient(client);
       Assert.Null(identity.OriginFor(client));
       Assert.Empty(identity.PairedDistributions());

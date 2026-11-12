@@ -8,21 +8,21 @@ namespace PinentryForWindows.Cli;
 internal static class PinentryCli {
   public static async Task<int> RunAsync(string[] args, CancellationToken ct) {
     if (args is ["--check"]) {
-      return await PinentryDiagnostics.RunAsync(ct);
+      return await PinentryDiagnostics.RunAsync(ct).ConfigureAwait(false);
     }
 
     if (args.Length is 1 or 2 &&
-        args[0] == "--clear-cache") {
+        string.Equals(args[0], "--clear-cache", StringComparison.Ordinal)) {
       var credentialRemoved = true;
       if (args.Length == 1) {
-        credentialRemoved = await PinentryPaths.CreateCache().ClearAllAsync(ct);
+        credentialRemoved = await PinentryPaths.CreateCache().ClearAllAsync(ct).ConfigureAwait(false);
       }
       else if (TryGrip(args[1], out var grip)) {
-        await PinentryPaths.CreateCache().RemoveAsync("windows", grip, ct);
+        await PinentryPaths.CreateCache().RemoveAsync("windows", grip, ct).ConfigureAwait(false);
       }
       else if (LooksLikeDirectory(args[1])) {
         credentialRemoved = await new WindowsPrfCache(Path.Combine(Path.GetFullPath(args[1]), "cache"),
-          new NativeWebAuthnPrf()).ClearAllAsync(ct);
+          new NativeWebAuthnPrf()).ClearAllAsync(ct).ConfigureAwait(false);
       }
       else {
         Console.WriteLine("No cache entry found for the specified key.");
@@ -43,7 +43,7 @@ internal static class PinentryCli {
       return 0;
     }
 
-    await Console.Error.WriteLineAsync("Unsupported command.");
+    await Console.Error.WriteLineAsync("Unsupported command.").ConfigureAwait(false);
     PrintUsage(Console.Error);
     return 2;
   }
@@ -63,7 +63,10 @@ internal static class PinentryCli {
 
   private static bool LooksLikeDirectory(string value)
     => Directory.Exists(value) || Path.IsPathFullyQualified(value) || value.StartsWith('.') || value.Contains('\\') ||
-       (value.Contains('/') && !value.StartsWith("n/") && !value.StartsWith("s/") && !value.StartsWith("u/"));
+       (value.Contains('/') &&
+        !value.StartsWith("n/", StringComparison.Ordinal) &&
+        !value.StartsWith("s/", StringComparison.Ordinal) &&
+        !value.StartsWith("u/", StringComparison.Ordinal));
 
   private static void PrintUsage(TextWriter output) {
     output.WriteLine("Usage: pfw.exe [command]");

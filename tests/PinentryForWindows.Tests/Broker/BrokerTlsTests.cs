@@ -70,18 +70,7 @@ public sealed class BrokerTlsTests {
     try {
       var identity = new BrokerIdentity(directory);
       using var serverCertificate = identity.GetOrCreateServerCertificate();
-      using var clientKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-      var request = new CertificateRequest("CN=paired-wsl", clientKey, HashAlgorithmName.SHA256);
-      request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
-        [new Oid("1.3.6.1.5.5.7.3.2")], false));
-      using var clientCertificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1),
-        DateTimeOffset.UtcNow.AddMinutes(10));
-      using var importedClient = X509CertificateLoader.LoadPkcs12(
-        clientCertificate.Export(X509ContentType.Pkcs12, string.Empty), string.Empty,
-        X509KeyStorageFlags.UserKeySet);
-      var publicPath = Path.Combine(directory, "client.cer");
-      File.WriteAllBytes(publicPath, clientCertificate.Export(X509ContentType.Cert));
-      identity.ApproveClient(publicPath, "wsl:archlinux");
+      using var importedClient = PairClient(identity, directory);
 
       var listener = new TcpListener(IPAddress.Loopback, 0);
       listener.Start();
@@ -129,5 +118,20 @@ public sealed class BrokerTlsTests {
       finally { listener.Stop(); }
     }
     finally { Directory.Delete(directory, true); }
+  }
+
+  private static X509Certificate2 PairClient(BrokerIdentity identity, string directory) {
+    using var clientKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    var request = new CertificateRequest("CN=paired-wsl", clientKey, HashAlgorithmName.SHA256);
+    request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+      [new Oid("1.3.6.1.5.5.7.3.2")], false));
+    using var clientCertificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1),
+      DateTimeOffset.UtcNow.AddMinutes(10));
+    var publicPath = Path.Combine(directory, "client.cer");
+    File.WriteAllBytes(publicPath, clientCertificate.Export(X509ContentType.Cert));
+    identity.ApproveClient(publicPath, "wsl:archlinux");
+    return X509CertificateLoader.LoadPkcs12(
+      clientCertificate.Export(X509ContentType.Pkcs12, string.Empty), string.Empty,
+      X509KeyStorageFlags.UserKeySet);
   }
 }

@@ -120,15 +120,15 @@ public sealed class RelayForwardingTests {
       switch (state) {
         case 1:
           if (greetingDelay is { } delay) {
-            await Task.Delay(delay, cancellationToken);
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
           }
 
           var greetingBytes = Encoding.UTF8.GetBytes(greeting);
           greetingBytes.CopyTo(buffer);
           return greetingBytes.Length;
         case 2: {
-          await _command.Task.WaitAsync(cancellationToken);
-          await Task.Delay(50, cancellationToken);
+          await _command.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+          await Task.Delay(50, cancellationToken).ConfigureAwait(false);
           var bytes = Encoding.UTF8.GetBytes(response);
           bytes.CopyTo(buffer);
           return bytes.Length;

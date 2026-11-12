@@ -96,8 +96,8 @@ public sealed class CliCompatibilityTests {
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
     var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
     var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-    await process.WaitForExitAsync(timeout.Token);
-    return (process.ExitCode, await stdout, await stderr);
+    await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+    return (process.ExitCode, await stdout.ConfigureAwait(false), await stderr.ConfigureAwait(false));
   }
 
   private sealed class FakePrf : IPrfProvider {

@@ -21,9 +21,10 @@ public static class PinentryProtocol {
     var state = new PinentrySessionState(origin, authenticated, ui, cache,
       productVersion ?? typeof(PinentryProtocol).Assembly.GetName().Version?.ToString() ?? "unknown", textFallbackEncoding);
     state.ResetTransient();
-    await using var session = new ServerSession<PinentrySessionState>(
+    var session = new ServerSession<PinentrySessionState>(
       new AcceptedConnection(stream), state, _registry, _hooks, _options);
-    await session.RunAsync(ct);
+    await using var sessionScope = session.ConfigureAwait(false);
+    await session.RunAsync(ct).ConfigureAwait(false);
   }
 
   private static CommandRegistry<PinentrySessionState> CreateRegistry() {

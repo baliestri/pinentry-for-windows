@@ -15,7 +15,7 @@ internal static class PinentryDiagnostics {
       : "  [WARN] Windows Hello platform authenticator unavailable; persistent cache disabled");
     Console.WriteLine($"  [OK] Cache data directory: {PinentryPaths.DataDirectory}");
 
-    await CheckGnuPgAsync(ct);
+    await CheckGnuPgAsync(ct).ConfigureAwait(false);
 
     return 0;
   }
@@ -41,31 +41,15 @@ internal static class PinentryDiagnostics {
       deadline.CancelAfter(TimeSpan.FromSeconds(5));
       var stdout = process.StandardOutput.ReadToEndAsync(deadline.Token);
       var stderr = process.StandardError.ReadToEndAsync(deadline.Token);
-      await process.WaitForExitAsync(deadline.Token);
-      await stderr;
+      await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+      await stderr.ConfigureAwait(false);
       if (process.ExitCode != 0) {
         throw new InvalidOperationException("gpgconf failed.");
       }
 
-      var home = Uri.UnescapeDataString((await stdout).Trim()).Replace('/', Path.DirectorySeparatorChar);
-      var config = Path.Combine(home, "gpg-agent.conf");
-      if (!File.Exists(config)) {
-        Console.WriteLine("  [WARN] GnuPG agent configuration not found");
-        return;
-      }
-
-      var line = (await File.ReadAllLinesAsync(config, ct)).FirstOrDefault(static text =>
-        text.TrimStart().StartsWith("pinentry-program ", StringComparison.OrdinalIgnoreCase));
-      if (line is null) {
-        Console.WriteLine("  [WARN] GnuPG agent does not specify a pinentry-program");
-        return;
-      }
-
-      var configured = line.Trim().Split(' ', 2)[1].Trim().Trim('"').Replace('/', Path.DirectorySeparatorChar);
-      var executable = Environment.ProcessPath ?? string.Empty;
-      Console.WriteLine(string.Equals(Path.GetFullPath(configured), executable, StringComparison.OrdinalIgnoreCase)
-        ? "  [OK] GnuPG agent points to this pinentry"
-        : "  [WARN] GnuPG agent points to another pinentry");
+      var home = Uri.UnescapeDataString((await stdout.ConfigureAwait(false)).Trim())
+        .Replace('/', Path.DirectorySeparatorChar);
+      await ReportConfiguredPinentryAsync(home, ct).ConfigureAwait(false);
     }
     catch (Exception error) when (error is not OperationCanceledException || !ct.IsCancellationRequested) {
       Console.WriteLine("  [WARN] GnuPG agent configuration could not be checked");
@@ -84,5 +68,26 @@ internal static class PinentryDiagnostics {
         process.Dispose();
       }
     }
+  }
+
+  private static async Task ReportConfiguredPinentryAsync(string home, CancellationToken ct) {
+    var config = Path.Combine(home, "gpg-agent.conf");
+    if (!File.Exists(config)) {
+      Console.WriteLine("  [WARN] GnuPG agent configuration not found");
+      return;
+    }
+
+    var line = (await File.ReadAllLinesAsync(config, ct).ConfigureAwait(false)).FirstOrDefault(static text =>
+      text.TrimStart().StartsWith("pinentry-program ", StringComparison.OrdinalIgnoreCase));
+    if (line is null) {
+      Console.WriteLine("  [WARN] GnuPG agent does not specify a pinentry-program");
+      return;
+    }
+
+    var configured = line.Trim().Split(' ', 2)[1].Trim().Trim('"').Replace('/', Path.DirectorySeparatorChar);
+    var executable = Environment.ProcessPath ?? string.Empty;
+    Console.WriteLine(string.Equals(Path.GetFullPath(configured), executable, StringComparison.OrdinalIgnoreCase)
+      ? "  [OK] GnuPG agent points to this pinentry"
+      : "  [WARN] GnuPG agent points to another pinentry");
   }
 }

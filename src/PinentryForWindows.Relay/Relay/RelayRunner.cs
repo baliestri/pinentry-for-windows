@@ -31,7 +31,7 @@ internal static class RelayRunner {
       }
       catch (Exception error) when
         (error is SocketException or TimeoutException && elapsed.Elapsed < _connectionBudget) {
-        await Task.Delay(TimeSpan.FromMilliseconds(200), ct);
+        await Task.Delay(TimeSpan.FromMilliseconds(200), ct).ConfigureAwait(false);
       }
     }
 
@@ -41,13 +41,16 @@ internal static class RelayRunner {
 
     VerboseLog.Write(VerboseEvent.VsockConnected);
     using (socket) {
-      await using var network = new VsockStream(socket);
+      var network = new VsockStream(socket);
+      await using var networkScope = network.ConfigureAwait(false);
       using var handshake = CancellationTokenSource.CreateLinkedTokenSource(ct);
       handshake.CancelAfter(TimeSpan.FromSeconds(10));
-      await using var secure = await RelayTls.AuthenticateAsync(network, identity,
-        clientCertificate, handshake.Token);
+      var secure = await RelayTls.AuthenticateAsync(network, identity,
+        clientCertificate, handshake.Token).ConfigureAwait(false);
+      await using var secureScope = secure.ConfigureAwait(false);
       VerboseLog.Write(VerboseEvent.TlsAuthenticated);
-      await AssuanRelay.RunAsync(Console.OpenStandardInput(), Console.OpenStandardOutput(), secure, ct);
+      await AssuanRelay.RunAsync(Console.OpenStandardInput(), Console.OpenStandardOutput(), secure, ct)
+        .ConfigureAwait(false);
       VerboseLog.Write(VerboseEvent.RelayFinished);
     }
   }

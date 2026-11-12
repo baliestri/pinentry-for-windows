@@ -13,6 +13,7 @@ public sealed partial class PinentrySessionState(string origin,
   IPinentryCache cache,
   string productVersion,
   Encoding? textFallbackEncoding = null) {
+  private const int REGEX_TIMEOUT_MILLISECONDS = 1000;
   private bool _cardDescription;
   private bool _keyInfoCleared;
   public string Origin { get; } = origin;
@@ -49,14 +50,14 @@ public sealed partial class PinentrySessionState(string origin,
 
   public void SetKeyInfo(string value) {
     KeyGrip = null;
-    _keyInfoCleared = value == "--clear";
+    _keyInfoCleared = string.Equals(value, "--clear", StringComparison.Ordinal);
     if (_keyInfoCleared) {
       return;
     }
 
-    var match = KeyGripRegex().Match(value);
+    var match = KeyGripRegex.Match(value);
     if (match.Success) {
-      KeyGrip = match.Groups[1].Value.ToUpperInvariant();
+      KeyGrip = match.Groups["grip"].Value.ToUpperInvariant();
     }
   }
 
@@ -69,8 +70,8 @@ public sealed partial class PinentrySessionState(string origin,
                        value.Contains("Holder:", StringComparison.OrdinalIgnoreCase) ||
                        value.Contains("Number:", StringComparison.OrdinalIgnoreCase);
 
-    var match = KeyIdRegex().Match(value);
-    CacheUser = match.Success ? match.Groups[1].Value : string.Empty;
+    var match = KeyIdRegex.Match(value);
+    CacheUser = match.Success ? match.Groups["id"].Value : string.Empty;
   }
 
   public void ResetTransient() {
@@ -93,9 +94,11 @@ public sealed partial class PinentrySessionState(string origin,
     TimeoutSeconds = 0;
   }
 
-  [GeneratedRegex("^(?:[nsu]/)?([0-9a-fA-F]{40})$", RegexOptions.CultureInvariant)]
-  private static partial Regex KeyGripRegex();
+  [GeneratedRegex("^(?:[nsu]/)?(?<grip>[0-9a-fA-F]{40})$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+    REGEX_TIMEOUT_MILLISECONDS)]
+  private static partial Regex KeyGripRegex { get; }
 
-  [GeneratedRegex(@"\bID ([0-9a-fA-F]{16})\b", RegexOptions.CultureInvariant)]
-  private static partial Regex KeyIdRegex();
+  [GeneratedRegex(@"\bID (?<id>[0-9a-fA-F]{16})\b", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+    REGEX_TIMEOUT_MILLISECONDS)]
+  private static partial Regex KeyIdRegex { get; }
 }

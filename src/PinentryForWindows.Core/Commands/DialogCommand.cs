@@ -14,15 +14,18 @@ internal sealed class DialogCommand(string name) : ICommandHandler<PinentrySessi
   public async ValueTask HandleAsync(CommandContext<PinentrySessionState> context, CancellationToken ct) {
     var state = context.State;
     var raw = context.Arguments;
-    var oneButton = Name == "CONFIRM" && raw.Span.SequenceEqual("--one-button"u8);
-    var description = Name == "MESSAGE" && !raw.IsEmpty ? WireText.Decode(raw, state.TextFallbackEncoding) : state.Description;
+    var oneButton = string.Equals(Name, "CONFIRM", StringComparison.Ordinal) &&
+                    raw.Span.SequenceEqual("--one-button"u8);
+    var description = string.Equals(Name, "MESSAGE", StringComparison.Ordinal) && !raw.IsEmpty
+      ? WireText.Decode(raw, state.TextFallbackEncoding)
+      : state.Description;
     var request = new DialogRequest(state.Title, description, state.OkLabel,
-      state.CancelLabel, oneButton || Name == "MESSAGE", state.TimeoutSeconds);
+      state.CancelLabel, oneButton || string.Equals(Name, "MESSAGE", StringComparison.Ordinal), state.TimeoutSeconds);
     try {
       if (request.OneButton) {
-        await state.Ui.MessageAsync(request, ct);
+        await state.Ui.MessageAsync(request, ct).ConfigureAwait(false);
       }
-      else if (!await state.Ui.ConfirmAsync(request, ct)) {
+      else if (!await state.Ui.ConfirmAsync(request, ct).ConfigureAwait(false)) {
         throw HandlerException.Remote(83886179, "cancelled");
       }
     }

@@ -43,8 +43,8 @@ internal sealed class StandardIoDuplexStream(Stream input, Stream output) : Stre
   }
 
   public override async ValueTask DisposeAsync() {
-    await input.DisposeAsync();
-    await output.DisposeAsync();
-    await base.DisposeAsync();
+    await input.DisposeAsync().ConfigureAwait(false);
+    await output.DisposeAsync().ConfigureAwait(false);
+    await base.DisposeAsync().ConfigureAwait(false);
   }
 }

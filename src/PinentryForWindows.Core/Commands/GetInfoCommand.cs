@@ -18,11 +18,11 @@ internal sealed class GetInfoCommand : ICommandHandler<PinentrySessionState> {
     var key = WireText.Require(context.Arguments);
     var value = key switch {
       "version" => context.State.ProductVersion,
-      "pid" => Environment.ProcessId.ToString(),
+      "pid" => Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
       "flavor" => "pinentry-for-windows",
       "ttyinfo" => "CONOUT$ w32",
       var _ => throw HandlerException.Remote(67109144, "unknown value")
     };
-    await context.SendDataAsync(Encoding.UTF8.GetBytes(value), ct);
+    await context.SendDataAsync(Encoding.UTF8.GetBytes(value), ct).ConfigureAwait(false);
   }
 }

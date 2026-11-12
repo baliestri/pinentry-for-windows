@@ -31,17 +31,17 @@ internal static class UiWire {
       user = Encode(request.UserLabel, 256);
       prompt = Encode(request.PromptLabel, 256);
 
-      await stream.WriteAsync(_requestMagic, ct);
+      await stream.WriteAsync(_requestMagic, ct).ConfigureAwait(false);
       var header = new byte[11];
       header[0] = request.OfferSave ? (byte)1 : (byte)0;
       BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(1), checked((ushort)request.TimeoutSeconds));
       BinaryPrimitives.WriteInt64LittleEndian(header.AsSpan(3), request.GetPinTimestamp);
-      await stream.WriteAsync(header, ct);
-      await WriteFieldAsync(stream, title, ct);
-      await WriteFieldAsync(stream, description, ct);
-      await WriteFieldAsync(stream, user, ct);
-      await WriteFieldAsync(stream, prompt, ct);
-      await stream.FlushAsync(ct);
+      await stream.WriteAsync(header, ct).ConfigureAwait(false);
+      await WriteFieldAsync(stream, title, ct).ConfigureAwait(false);
+      await WriteFieldAsync(stream, description, ct).ConfigureAwait(false);
+      await WriteFieldAsync(stream, user, ct).ConfigureAwait(false);
+      await WriteFieldAsync(stream, prompt, ct).ConfigureAwait(false);
+      await stream.FlushAsync(ct).ConfigureAwait(false);
     }
     finally {
       if (title is not null) {
@@ -64,7 +64,7 @@ internal static class UiWire {
 
   public static async ValueTask<PromptRequest> ReadRequestAsync(Stream stream, CancellationToken ct) {
     var header = new byte[15];
-    await stream.ReadExactlyAsync(header, ct);
+    await stream.ReadExactlyAsync(header, ct).ConfigureAwait(false);
     if (!header.AsSpan(0, 4).SequenceEqual(_requestMagic) ||
         header[4] > 1) {
       throw new InvalidDataException("Invalid UI request header.");
@@ -77,9 +77,10 @@ internal static class UiWire {
       throw new InvalidDataException("Invalid UI timeout.");
     }
 
-    return new PromptRequest(await ReadFieldAsync(stream, 256, ct),
-      await ReadFieldAsync(stream, 4096, ct), await ReadFieldAsync(stream, 256, ct),
-      await ReadFieldAsync(stream, 256, ct), header[4] == 1, timeout, timestamp);
+    return new PromptRequest(await ReadFieldAsync(stream, 256, ct).ConfigureAwait(false),
+      await ReadFieldAsync(stream, 4096, ct).ConfigureAwait(false),
+      await ReadFieldAsync(stream, 256, ct).ConfigureAwait(false),
+      await ReadFieldAsync(stream, 256, ct).ConfigureAwait(false), header[4] == 1, timeout, timestamp);
   }
 
   public static ValueTask WriteCancelledAsync(Stream stream, CancellationToken ct)
@@ -97,7 +98,7 @@ internal static class UiWire {
 
   public static async ValueTask<PasswordPromptResult?> ReadResultAsync(Stream stream, CancellationToken ct) {
     var header = new byte[8];
-    await stream.ReadExactlyAsync(header, ct);
+    await stream.ReadExactlyAsync(header, ct).ConfigureAwait(false);
     if (!header.AsSpan(0, 4).SequenceEqual(_resultMagic) ||
         header[5] > 1) {
       throw new InvalidDataException("Invalid UI response header.");
@@ -130,7 +131,7 @@ internal static class UiWire {
     var bytes = new byte[length];
     var secret = new SecretBuffer(MAX_SECRET_BYTES);
     try {
-      await stream.ReadExactlyAsync(bytes, ct);
+      await stream.ReadExactlyAsync(bytes, ct).ConfigureAwait(false);
       secret.Append(bytes);
       return new PasswordPromptResult(secret, header[5] == 1);
     }
@@ -153,12 +154,12 @@ internal static class UiWire {
     header[4] = status;
     header[5] = remember ? (byte)1 : (byte)0;
     BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(6), checked((ushort)secret.Length));
-    await stream.WriteAsync(header, ct);
+    await stream.WriteAsync(header, ct).ConfigureAwait(false);
     if (!secret.IsEmpty) {
-      await stream.WriteAsync(secret, ct);
+      await stream.WriteAsync(secret, ct).ConfigureAwait(false);
     }
 
-    await stream.FlushAsync(ct);
+    await stream.FlushAsync(ct).ConfigureAwait(false);
   }
 
   private static byte[] Encode(string text, int maxLength) {
@@ -176,13 +177,13 @@ internal static class UiWire {
   private static async ValueTask WriteFieldAsync(Stream stream, byte[] bytes, CancellationToken ct) {
     var length = new byte[2];
     BinaryPrimitives.WriteUInt16LittleEndian(length, checked((ushort)bytes.Length));
-    await stream.WriteAsync(length, ct);
-    await stream.WriteAsync(bytes, ct);
+    await stream.WriteAsync(length, ct).ConfigureAwait(false);
+    await stream.WriteAsync(bytes, ct).ConfigureAwait(false);
   }
 
   private static async ValueTask<string> ReadFieldAsync(Stream stream, int maxLength, CancellationToken ct) {
     var lengthBytes = new byte[2];
-    await stream.ReadExactlyAsync(lengthBytes, ct);
+    await stream.ReadExactlyAsync(lengthBytes, ct).ConfigureAwait(false);
     var length = BinaryPrimitives.ReadUInt16LittleEndian(lengthBytes);
     if (length > maxLength) {
       throw new InvalidDataException("UI request exceeds the text limit.");
@@ -190,7 +191,7 @@ internal static class UiWire {
 
     var bytes = new byte[length];
     try {
-      await stream.ReadExactlyAsync(bytes, ct);
+      await stream.ReadExactlyAsync(bytes, ct).ConfigureAwait(false);
       return _strictUtf8.GetString(bytes);
     }
     finally { CryptographicOperations.ZeroMemory(bytes); }

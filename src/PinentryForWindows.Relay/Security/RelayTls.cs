@@ -21,11 +21,11 @@ internal static class RelayTls {
         EnabledSslProtocols = SslProtocols.Tls13,
         AllowRenegotiation = false,
         CertificateRevocationCheckMode = X509RevocationMode.NoCheck
-      }, ct);
+      }, ct).ConfigureAwait(false);
       return stream;
     }
     catch {
-      await stream.DisposeAsync();
+      await stream.DisposeAsync().ConfigureAwait(false);
       throw;
     }
   }

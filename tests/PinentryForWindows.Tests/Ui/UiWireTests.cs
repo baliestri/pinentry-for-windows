@@ -27,7 +27,7 @@ public sealed class UiWireTests {
     byte[] oversizedHeader = [(byte)'P', (byte)'F', (byte)'R', (byte)'1', 1, 0, 0x01, 0x10];
     using var stream = new MemoryStream(oversizedHeader);
     await Assert.ThrowsAsync<InvalidDataException>(async () =>
-      await UiWire.ReadResultAsync(stream, CancellationToken.None));
+      await UiWire.ReadResultAsync(stream, CancellationToken.None).ConfigureAwait(false));
   }
 
   [Fact]
@@ -44,7 +44,7 @@ public sealed class UiWireTests {
     await UiWire.WriteTooLongAsync(stream, CancellationToken.None);
     stream.Position = 0;
     await Assert.ThrowsAsync<SecretTooLongException>(async () =>
-      await UiWire.ReadResultAsync(stream, CancellationToken.None));
+      await UiWire.ReadResultAsync(stream, CancellationToken.None).ConfigureAwait(false));
   }
 
   [Fact]
@@ -52,7 +52,7 @@ public sealed class UiWireTests {
     using var stream = new MemoryStream();
     var request = new PromptRequest("Title", new string('X', 5000), "User", "Password:", false, 0);
     await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
-      await UiWire.WriteRequestAsync(stream, request, CancellationToken.None));
+      await UiWire.WriteRequestAsync(stream, request, CancellationToken.None).ConfigureAwait(false));
   }
 
   [Fact]
@@ -89,7 +89,7 @@ public sealed class UiWireTests {
       "User label 12345", "Password prompt 123", false, 0);
 
     await Assert.ThrowsAsync<IOException>(async () =>
-      await UiWire.WriteRequestAsync(stream, request, CancellationToken.None));
+      await UiWire.WriteRequestAsync(stream, request, CancellationToken.None).ConfigureAwait(false));
     Assert.Equal(2, stream.BorrowedTextBuffers.Count);
     Assert.All(stream.BorrowedTextBuffers, bytes => Assert.All(bytes, value => Assert.Equal(0, value)));
   }

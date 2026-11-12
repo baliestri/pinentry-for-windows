@@ -35,18 +35,7 @@ internal static unsafe partial class NativeCredentialPrompt {
         Size = (uint)sizeof(CredUiInfo), Caption = (IntPtr)titlePtr, Message = (IntPtr)messagePtr
       };
       try {
-        _ = CredPackAuthenticationBufferW(CRED_PACK_GENERIC_CREDENTIALS, userPtr, passwordPtr,
-          null, ref inputLength);
-        if (inputLength is 0 or > 4096) {
-          throw new InvalidDataException("Invalid credential input size.");
-        }
-
-        input = Marshal.AllocCoTaskMem(checked((int)inputLength));
-        if (!CredPackAuthenticationBufferW(CRED_PACK_GENERIC_CREDENTIALS, userPtr, passwordPtr,
-              (byte*)input, ref inputLength)) {
-          throw new InvalidOperationException($"Windows Security pack failed: {Marshal.GetLastPInvokeError()}.");
-        }
-
+        input = PackInput(userPtr, passwordPtr, out inputLength);
         var flags = CREDUIWIN_GENERIC | CREDUIWIN_IN_CRED_ONLY |
                     (request.OfferSave ? CREDUIWIN_CHECKBOX : 0);
         var beforeCall = Stopwatch.GetTimestamp();
@@ -68,20 +57,39 @@ internal static unsafe partial class NativeCredentialPrompt {
       finally {
         Array.Clear(user);
         Array.Clear(emptyPassword);
-        if (input != IntPtr.Zero) {
-          CryptographicOperations.ZeroMemory(new Span<byte>((void*)input, checked((int)inputLength)));
-          Marshal.FreeCoTaskMem(input);
-        }
-
-        if (output != IntPtr.Zero) {
-          if (outputLength > 0) {
-            CryptographicOperations.ZeroMemory(new Span<byte>((void*)output, checked((int)outputLength)));
-          }
-
-          Marshal.FreeCoTaskMem(output);
-        }
+        Release(input, inputLength);
+        Release(output, outputLength);
       }
     }
+  }
+
+  private static IntPtr PackInput(char* user, char* password, out uint length) {
+    length = 0;
+    _ = CredPackAuthenticationBufferW(CRED_PACK_GENERIC_CREDENTIALS, user, password, null, ref length);
+    if (length is 0 or > 4096) {
+      throw new InvalidDataException("Invalid credential input size.");
+    }
+
+    var input = Marshal.AllocCoTaskMem(checked((int)length));
+    if (!CredPackAuthenticationBufferW(CRED_PACK_GENERIC_CREDENTIALS, user, password, (byte*)input, ref length)) {
+      var code = Marshal.GetLastPInvokeError();
+      Marshal.FreeCoTaskMem(input);
+      throw new InvalidOperationException($"Windows Security pack failed: {code}.");
+    }
+
+    return input;
+  }
+
+  private static void Release(IntPtr buffer, uint length) {
+    if (buffer == IntPtr.Zero) {
+      return;
+    }
+
+    if (length > 0) {
+      CryptographicOperations.ZeroMemory(new Span<byte>((void*)buffer, checked((int)length)));
+    }
+
+    Marshal.FreeCoTaskMem(buffer);
   }
 
   internal static string BuildMessage(PromptRequest request)

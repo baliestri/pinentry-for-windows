@@ -22,6 +22,6 @@ internal sealed class ClearPassphraseCommand : ICommandHandler<PinentrySessionSt
       throw HandlerException.Remote(67109144, "invalid key");
     }
 
-    await context.State.Cache.RemoveAsync(context.State.Origin, grip.ToUpperInvariant(), ct);
+    await context.State.Cache.RemoveAsync(context.State.Origin, grip.ToUpperInvariant(), ct).ConfigureAwait(false);
   }
 }

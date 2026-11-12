@@ -4,7 +4,8 @@
 namespace PinentryForWindows.Diagnostics;
 
 internal static class VerboseLog {
-  private static readonly bool _enabled = Environment.GetEnvironmentVariable("PFW_VERBOSE") == "1";
+  private static readonly bool _enabled =
+    string.Equals(Environment.GetEnvironmentVariable("PFW_VERBOSE"), "1", StringComparison.Ordinal);
 
   public static void Write(VerboseEvent eventType) {
     if (!_enabled) {

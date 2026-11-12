@@ -115,7 +115,7 @@ internal sealed class RelayIdentity(string directory) {
   private void CheckPrivatePermissions() {
     const UnixFileMode MASK = UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
                               UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
-    if ((File.GetUnixFileMode(PrivateKeyPath) & MASK) != 0) {
+    if ((File.GetUnixFileMode(PrivateKeyPath) & MASK) != UnixFileMode.None) {
       throw new UnauthorizedAccessException("Relay private key is not restricted to the current Linux user.");
     }
   }

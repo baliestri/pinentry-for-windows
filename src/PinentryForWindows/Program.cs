@@ -12,7 +12,7 @@ using PinentryForWindows.Transport;
 using PinentryForWindows.Ui;
 
 if (args is ["--ui-helper", var _, var _]) {
-  return await UiHelper.RunAsync(args[1], args[2]);
+  return await UiHelper.RunAsync(args[1], args[2]).ConfigureAwait(false);
 }
 
 using var stop = new CancellationTokenSource();
@@ -45,7 +45,7 @@ try {
       Console.WriteLine("Broker pairing material removed.");
       return 0;
     case ["--vm-id", var _]: {
-      var vmId = await VmIdProvider.TryGetAsync(args[1], stop.Token);
+      var vmId = await VmIdProvider.TryGetAsync(args[1], stop.Token).ConfigureAwait(false);
       Console.WriteLine(vmId?.ToString("D") ?? "not running");
       return 0;
     }
@@ -53,21 +53,22 @@ try {
       VerboseLog.Write(VerboseEvent.BrokerStarted);
       var host = new BrokerHost(new BrokerIdentity(args[1]),
         new UiCoordinator(), PinentryPaths.CreateCache(), productVersion);
-      await host.RunAsync(stop.Token);
+      await host.RunAsync(stop.Token).ConfigureAwait(false);
       return 0;
     }
   }
 
   if (args.Length != 0) {
     VerboseLog.Write(VerboseEvent.CommandStarted);
-    return await PinentryCli.RunAsync(args, stop.Token);
+    return await PinentryCli.RunAsync(args, stop.Token).ConfigureAwait(false);
   }
 
   VerboseLog.Write(VerboseEvent.LocalSessionStarted);
   Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
   var nativeEncoding = Encoding.GetEncoding(0, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
   await PinentryProtocol.RunAsync(new StandardIoDuplexStream(Console.OpenStandardInput(), Console.OpenStandardOutput()),
-    "windows", true, new UiCoordinator(), PinentryPaths.CreateCache(), stop.Token, productVersion, nativeEncoding);
+      "windows", true, new UiCoordinator(), PinentryPaths.CreateCache(), stop.Token, productVersion, nativeEncoding)
+    .ConfigureAwait(false);
   return 0;
 }
 catch (OperationCanceledException) {

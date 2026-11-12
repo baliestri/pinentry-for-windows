@@ -15,7 +15,7 @@ internal static class VmIdProvider {
       throw new ArgumentException("Invalid distribution name.", nameof(distribution));
     }
 
-    var running = await InvokeWslAsync(Encoding.Unicode, ct, "--list", "--running", "--quiet");
+    var running = await InvokeWslAsync(Encoding.Unicode, ct, "--list", "--running", "--quiet").ConfigureAwait(false);
     if (running is null ||
         !running.Replace("\0", string.Empty).Split(['\r', '\n'],
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -23,7 +23,8 @@ internal static class VmIdProvider {
       return null;
     }
 
-    var result = await InvokeWslAsync(Encoding.UTF8, ct, "--distribution", distribution, "--", "wslinfo", "--vm-id");
+    var result = await InvokeWslAsync(Encoding.UTF8, ct, "--distribution", distribution, "--", "wslinfo", "--vm-id")
+      .ConfigureAwait(false);
     return Guid.TryParse(result?.Replace("\0", string.Empty).Trim(), out var vmId) ? vmId : null;
   }
 
@@ -53,8 +54,8 @@ internal static class VmIdProvider {
     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
     deadline.CancelAfter(TimeSpan.FromSeconds(5));
     try {
-      var output = await process.StandardOutput.ReadToEndAsync(deadline.Token);
-      await process.WaitForExitAsync(deadline.Token);
+      var output = await process.StandardOutput.ReadToEndAsync(deadline.Token).ConfigureAwait(false);
+      await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
       return process.ExitCode == 0 && output.Length < 4096 ? output : null;
     }
     catch (OperationCanceledException) when (!ct.IsCancellationRequested) {

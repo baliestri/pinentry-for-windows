@@ -228,7 +228,7 @@ public sealed class PinentryProtocolTests {
         bothPrompting.TrySetResult();
       }
 
-      await bothPrompting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+      await bothPrompting.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
     }
   }
 
@@ -332,12 +332,14 @@ public sealed class PinentryProtocolTests {
   private static async Task<string> RunAsync(string commands, FakeUi ui, FakeCache cache, string origin = "windows",
   Action? beforeSecondPrompt = null) {
     ui.BeforeSecondPrompt = beforeSecondPrompt;
-    return await RunAsync(Encoding.UTF8.GetBytes(commands), ui, cache, origin);
+    return await RunAsync(Encoding.UTF8.GetBytes(commands), ui, cache, origin).ConfigureAwait(false);
   }
 
   private static async Task<string> RunAsync(byte[] commands, FakeUi ui, FakeCache cache, string origin = "windows", Encoding? textFallbackEncoding = null) {
-    await using var stream = new ScriptedStream(commands);
-    await PinentryProtocol.RunAsync(stream, origin, true, ui, cache, CancellationToken.None, textFallbackEncoding: textFallbackEncoding);
+    var stream = new ScriptedStream(commands);
+    await using var streamScope = stream.ConfigureAwait(false);
+    await PinentryProtocol.RunAsync(stream, origin, true, ui, cache, CancellationToken.None,
+      textFallbackEncoding: textFallbackEncoding).ConfigureAwait(false);
     return Encoding.UTF8.GetString(stream.Output);
   }
 
@@ -374,7 +376,7 @@ public sealed class PinentryProtocolTests {
       }
 
       if (WaitBeforePrompt is not null) {
-        await WaitBeforePrompt();
+        await WaitBeforePrompt().ConfigureAwait(false);
       }
 
       LastOfferSave = request.OfferSave;

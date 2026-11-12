@@ -49,7 +49,7 @@ try {
     return 2;
   }
 
-  await RelayRunner.RunAsync(new RelayIdentity(directory), stop.Token);
+  await RelayRunner.RunAsync(new RelayIdentity(directory), stop.Token).ConfigureAwait(false);
   return 0;
 }
 catch (OperationCanceledException) {

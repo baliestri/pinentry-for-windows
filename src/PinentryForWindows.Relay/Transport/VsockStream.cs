@@ -36,7 +36,8 @@ internal sealed partial class VsockStream(Socket socket) : Stream {
 
     var scratch = new byte[Math.Min(buffer.Length, 4096)];
     try {
-      var count = await Task.Run(() => ReadNative(socket.SafeHandle, scratch, 0, scratch.Length, ct), ct);
+      var count = await Task.Run(() => ReadNative(socket.SafeHandle, scratch, 0, scratch.Length, ct), ct)
+        .ConfigureAwait(false);
       scratch.AsMemory(0, count).CopyTo(buffer);
       return count;
     }
@@ -48,7 +49,10 @@ internal sealed partial class VsockStream(Socket socket) : Stream {
 
   public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default) {
     var scratch = buffer.ToArray();
-    try { await Task.Run(() => WriteNative(socket.SafeHandle, scratch, 0, scratch.Length, ct), ct); }
+    try {
+      await Task.Run(() => WriteNative(socket.SafeHandle, scratch, 0, scratch.Length, ct), ct)
+        .ConfigureAwait(false);
+    }
     finally { CryptographicOperations.ZeroMemory(scratch); }
   }
 

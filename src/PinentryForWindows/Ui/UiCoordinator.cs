@@ -18,8 +18,9 @@ internal sealed class UiCoordinator : IPinentryUi {
       }
 
       try { return UiGate.Run(() => RunWorker(request, deadline.Token), deadline.Token); }
-      catch (OperationCanceledException) when (!ct.IsCancellationRequested && deadline.IsCancellationRequested) {
-        throw new TimeoutException("Pinentry prompt timed out.");
+      catch (OperationCanceledException error) when (!ct.IsCancellationRequested &&
+                                                     deadline.IsCancellationRequested) {
+        throw new TimeoutException("Pinentry prompt timed out.", error);
       }
     }, ct);
     return new ValueTask<PasswordPromptResult?>(task);

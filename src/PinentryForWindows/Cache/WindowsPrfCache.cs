@@ -33,7 +33,7 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
       return null;
     }
 
-    var encoded = await File.ReadAllBytesAsync(path, ct);
+    var encoded = await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false);
     if (encoded.Length < 66 ||
         !encoded.AsSpan(0, 4).SequenceEqual(_magic)) {
       VerboseLog.Write(VerboseEvent.CacheInvalid);
@@ -50,19 +50,21 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
     var credential = ReadCredentialId();
     var salt = encoded.AsMemory(4, 32);
     byte[] prf;
-    try { prf = await provider.DeriveAsync(credential, salt, ct); }
+    try { prf = await provider.DeriveAsync(credential, salt, ct).ConfigureAwait(false); }
     catch (Exception) {
       VerboseLog.Write(VerboseEvent.CacheLookupFailed);
       throw;
     }
 
-    byte[]? derived = null;
-    byte[]? clear = null;
+    try { return Open(encoded, length, prf, Context(origin, key)); }
+    finally { CryptographicOperations.ZeroMemory(prf); }
+  }
+
+  private static SecretBuffer? Open(byte[] encoded, int length, byte[] prf, byte[] context) {
+    var clear = new byte[length];
+    var derived = new byte[32];
     try {
-      var context = Context(origin, key);
-      clear = new byte[length];
-      derived = new byte[32];
-      HKDF.DeriveKey(HashAlgorithmName.SHA256, prf, derived, salt.Span, context);
+      HKDF.DeriveKey(HashAlgorithmName.SHA256, prf, derived, encoded.AsSpan(4, 32), context);
       using var aes = new AesGcm(derived, 16);
       aes.Decrypt(encoded.AsSpan(36, 12), encoded.AsSpan(66), encoded.AsSpan(48, 16), clear, context);
       var result = new SecretBuffer(MAX_SECRET);
@@ -75,15 +77,32 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
       return null;
     }
     finally {
-      CryptographicOperations.ZeroMemory(prf);
-      if (derived is not null) {
-        CryptographicOperations.ZeroMemory(derived);
-      }
+      CryptographicOperations.ZeroMemory(derived);
+      CryptographicOperations.ZeroMemory(clear);
+    }
+  }
 
-      if (clear is not null) {
-        CryptographicOperations.ZeroMemory(clear);
+  private static byte[] Seal(ReadOnlySpan<byte> secret, byte[] prf, byte[] salt, byte[] context) {
+    var nonce = RandomNumberGenerator.GetBytes(12);
+    var tag = new byte[16];
+    var ciphertext = new byte[secret.Length];
+    var derived = new byte[32];
+    try {
+      HKDF.DeriveKey(HashAlgorithmName.SHA256, prf, derived, salt, context);
+      using (var aes = new AesGcm(derived, 16)) {
+        aes.Encrypt(nonce, secret, ciphertext, tag, context);
       }
     }
+    finally { CryptographicOperations.ZeroMemory(derived); }
+
+    var envelope = new byte[66 + ciphertext.Length];
+    _magic.CopyTo(envelope, 0);
+    salt.CopyTo(envelope, 4);
+    nonce.CopyTo(envelope, 36);
+    tag.CopyTo(envelope, 48);
+    BinaryPrimitives.WriteUInt16LittleEndian(envelope.AsSpan(64), checked((ushort)ciphertext.Length));
+    ciphertext.CopyTo(envelope, 66);
+    return envelope;
   }
 
   public async ValueTask WriteAsync(string origin, string key, ReadOnlyMemory<byte> secret, CancellationToken ct) {
@@ -94,43 +113,27 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
 
     Directory.CreateDirectory(directory);
     Directory.CreateDirectory(EntriesPath);
-    await using var admission = await LockAsync(ct);
+    var admission = await LockAsync(ct).ConfigureAwait(false);
+    await using var admissionScope = admission.ConfigureAwait(false);
 
     var newCredential = !File.Exists(CredentialPath);
     var credential = newCredential
-      ? await provider.CreateCredentialAsync(ct)
+      ? await provider.CreateCredentialAsync(ct).ConfigureAwait(false)
       : ReadCredentialId();
     byte[]? prf = null;
-    byte[]? derived = null;
     try {
       var salt = RandomNumberGenerator.GetBytes(32);
-      var nonce = RandomNumberGenerator.GetBytes(12);
-      var tag = new byte[16];
-      var ciphertext = new byte[secret.Length];
-      prf = await provider.DeriveAsync(credential, salt, ct);
-      var context = Context(origin, key);
-      derived = new byte[32];
-      HKDF.DeriveKey(HashAlgorithmName.SHA256, prf, derived, salt, context);
-      using (var aes = new AesGcm(derived, 16)) {
-        aes.Encrypt(nonce, secret.Span, ciphertext, tag, context);
-      }
-
-      var envelope = new byte[66 + ciphertext.Length];
-      _magic.CopyTo(envelope, 0);
-      salt.CopyTo(envelope, 4);
-      nonce.CopyTo(envelope, 36);
-      tag.CopyTo(envelope, 48);
-      BinaryPrimitives.WriteUInt16LittleEndian(envelope.AsSpan(64), checked((ushort)ciphertext.Length));
-      ciphertext.CopyTo(envelope, 66);
+      prf = await provider.DeriveAsync(credential, salt, ct).ConfigureAwait(false);
+      var envelope = Seal(secret.Span, prf, salt, Context(origin, key));
 
       if (newCredential) {
-        await SaveCredentialAsync(credential, ct);
+        await SaveCredentialAsync(credential, ct).ConfigureAwait(false);
       }
 
       var target = EntryPath(origin, key);
       var temporary = Path.Combine(EntriesPath, Path.GetRandomFileName());
       try {
-        await File.WriteAllBytesAsync(temporary, envelope, ct);
+        await File.WriteAllBytesAsync(temporary, envelope, ct).ConfigureAwait(false);
         File.Move(temporary, target, true);
         VerboseLog.Write(VerboseEvent.CacheStored);
       }
@@ -147,7 +150,7 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
           File.Delete(CredentialPath);
         }
 
-        try { await provider.DeleteCredentialAsync(credential, CancellationToken.None); }
+        try { await provider.DeleteCredentialAsync(credential, CancellationToken.None).ConfigureAwait(false); }
         catch (Exception) {
           /* A failed cleanup cannot expose the passphrase. */
         }
@@ -159,10 +162,6 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
       if (prf is not null) {
         CryptographicOperations.ZeroMemory(prf);
       }
-
-      if (derived is not null) {
-        CryptographicOperations.ZeroMemory(derived);
-      }
     }
   }
 
@@ -171,7 +170,8 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
       return;
     }
 
-    await using var admission = await LockAsync(ct);
+    var admission = await LockAsync(ct).ConfigureAwait(false);
+    await using var admissionScope = admission.ConfigureAwait(false);
     var path = EntryPath(origin, key);
     if (File.Exists(path)) {
       File.Delete(path);
@@ -187,12 +187,13 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
       return true;
     }
 
-    await using var admission = await LockAsync(ct);
+    var admission = await LockAsync(ct).ConfigureAwait(false);
+    await using var admissionScope = admission.ConfigureAwait(false);
     var credentialRemoved = true;
     if (File.Exists(CredentialPath)) {
       // A missing passkey or a damaged record must never keep the local files in place:
       // without the credential the entries are undecryptable and only block new ones.
-      try { await provider.DeleteCredentialAsync(ReadCredentialId(), ct); }
+      try { await provider.DeleteCredentialAsync(ReadCredentialId(), ct).ConfigureAwait(false); }
       catch (Exception) when (!ct.IsCancellationRequested) {
         credentialRemoved = false;
       }
@@ -218,7 +219,7 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
           FileAccess.ReadWrite, FileShare.None);
       }
       catch (IOException) when (start.Elapsed < _lockBudget) {
-        await Task.Delay(50, ct);
+        await Task.Delay(50, ct).ConfigureAwait(false);
       }
     }
   }
@@ -233,7 +234,7 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
     credential.CopyTo(data, 2);
     var temporary = CredentialPath + ".tmp";
     try {
-      await File.WriteAllBytesAsync(temporary, data, ct);
+      await File.WriteAllBytesAsync(temporary, data, ct).ConfigureAwait(false);
       File.Move(temporary, CredentialPath, false);
     }
     finally {
