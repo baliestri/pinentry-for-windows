@@ -28,7 +28,7 @@ jobs:
       branch: ${{ steps.preflight.outputs.branch }}
     steps:
       - name: Checkout develop with release history
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/heads/develop
           fetch-depth: 0
@@ -128,7 +128,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout validated candidate
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.candidate_sha }}
           fetch-depth: 0
@@ -185,7 +185,7 @@ jobs:
       attestations: write
     steps:
       - name: Checkout promoted release tag
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ inputs.version }}
 
@@ -293,7 +293,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout for authenticated branch cleanup
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/heads/develop
 
