@@ -142,6 +142,41 @@ Repeat steps 2–4 for each additional distribution. Its client certificate, dis
 separate. WSL1 and noninteractive/headless Windows sessions are not supported.
 
 <details>
+<summary>Renew the bridge certificates (they are valid for one year)</summary>
+
+The broker and each relay hold a self-signed certificate that expires one year after it was created. `pfw.exe --check`
+lists the expiry dates and warns 30 days ahead; an expired certificate stops the bridge with an explicit message. Each
+side renews on its own and keeps the other side's pairing.
+
+**Relay certificate** (per distribution). Renew it in WSL, then replace the pairing on Windows:
+
+```bash
+curl -fsSL https://exec.baliestri.dev/pfw-setup-wsl.sh | bash -s -- --renew
+```
+
+```powershell
+& ([scriptblock]::Create((irm 'https://exec.baliestri.dev/pfw-setup-bridge.ps1'))) `
+  -Distribution archlinux -ReplacePairing `
+  -RelayCertificatePath '\\wsl.localhost\archlinux\home\YOUR_USER\.config\PinentryForWindows\relay\client.cer'
+```
+
+Cached passphrases are bound to the client certificate, so entries saved from that distribution must be saved again.
+
+**Broker certificate.** Renew it on Windows, restart the broker, then pin the new certificate in every paired
+distribution:
+
+```powershell
+& ([scriptblock]::Create((irm 'https://exec.baliestri.dev/pfw-setup-bridge.ps1'))) -RenewBroker
+```
+
+```bash
+curl -fsSL https://exec.baliestri.dev/pfw-setup-wsl.sh | \
+  bash -s -- --broker-certificate /mnt/c/path/to/broker.cer --replace-broker
+```
+
+</details>
+
+<details>
 <summary>Manual WSL configuration and file permissions</summary>
 
 After pairing, add `pinentry-program /home/YOUR_USER/.local/bin/pfw-relay-x64` to that distribution's `gpg-agent.conf`
@@ -186,6 +221,8 @@ To remove the optional persistent cache credential and all its entries, run:
 | No **Remember me** box           | Card PINs and requests without external-cache permission or a stable software-key identity are not eligible. Normal passphrase entry still works.                                                                        |
 | Hello cancelled or not available | Type the passphrase normally. `--check` reports prerequisites but does not prove that a PRF assertion succeeds on this device.                                                                                           |
 | Second signature shows no window | `gpg-agent` may already have the passphrase in its own short-lived cache; it did not necessarily access the persistent cache.                                                                                            |
+| Bridge reports an expired certificate | Bridge certificates last one year. Follow [Renew the bridge certificates](#add-a-wsl2-distribution); `pfw.exe --check` shows the dates.                                                                             |
+| **Remember me** no longer saves  | The Windows Hello passkey was probably removed. Run `pfw.exe --clear-cache` to drop the unusable entries; the next saved passphrase creates a new passkey.                                                               |
 
 Set `PFW_VERBOSE=1` before starting the affected pinentry, broker, or relay for fixed-category diagnostics on stderr.
 Windows and WSL each read their **own** environment; restart the corresponding `gpg-agent` after changing it. Extra
@@ -231,7 +268,9 @@ The Windows executable serves the local `gpg-agent` over binary stdin/stdout. In
 Assuan bytes over `AF_VSOCK` to a Windows broker on `AF_HYPERV`. TLS 1.3 authenticates both sides using separately
 paired
 certificates; an unpaired client is rejected before the Assuan greeting. The broker follows the current WSL VM ID after
-a restart, while the paired certificate (not that VM ID) identifies the distribution. There is no implicit TCP fallback.
+a restart, while the paired certificate (not that VM ID) identifies the distribution. It notices a restart by watching
+the VM's host process and only runs `wsl.exe` when that process appears or changes, so an idle broker neither spawns
+processes nor keeps a distribution awake. There is no implicit TCP fallback.
 The relay writes only Assuan to stdout; redacted errors and opt-in diagnostics go to stderr.
 
 ### Command-line interface
@@ -248,7 +287,9 @@ The Windows binary accepts these commands (paths are local to Windows):
 | `pfw.exe --clear-cache <data-directory>`                                | Clear a cache in an explicit data directory.                                                         |
 | `pfw.exe --init-broker <broker-directory>`                              | Create or load the Windows broker identity and print its public certificate path.                    |
 | `pfw.exe --approve-client <broker-directory> <client.cer> wsl:<distro>` | Pair a public WSL client certificate with a distribution label.                                      |
+| `pfw.exe --replace-client <broker-directory> <client.cer> wsl:<distro>` | Pair a renewed client certificate and drop the previous pairing of that distribution.                |
 | `pfw.exe --revoke-client <broker-directory> <client.cer>`               | Revoke the matching client certificate.                                                              |
+| `pfw.exe --renew-broker <broker-directory>`                             | Replace the broker certificate while keeping paired clients; relays must pin the new one.            |
 | `pfw.exe --reset-broker <broker-directory>`                             | Remove local broker identity and paired clients.                                                     |
 | `pfw.exe --vm-id <distribution>`                                        | Report the running WSL VM ID, or `not running`.                                                      |
 | `pfw.exe --broker <broker-directory>`                                   | Run the Windows broker in the interactive user session.                                              |
@@ -260,7 +301,9 @@ The Windows binary accepts these commands (paths are local to Windows):
 | `pfw-relay`                                               | Serve the WSL pinentry using `~/.config/PinentryForWindows/relay`. |
 | `pfw-relay --run <relay-directory>`                       | Serve using an explicit relay identity directory.                  |
 | `pfw-relay --init <relay-directory>`                      | Create the client key and public `client.cer`.                     |
+| `pfw-relay --renew <relay-directory>`                     | Replace the client key and certificate, keeping the broker pin.    |
 | `pfw-relay --trust-broker <relay-directory> <broker.cer>` | Pin the Windows broker's public certificate.                       |
+| `pfw-relay --trust-broker <relay-directory> <broker.cer> --replace` | Replace the pinned broker certificate after a broker renewal. |
 | `pfw-relay --remove-identity <relay-directory>`           | Remove the local client identity and pinned broker certificate.    |
 
 For opt-in diagnostics, set `PFW_VERBOSE=1` **before starting** the Windows pinentry/broker or the WSL relay. Each side
@@ -287,12 +330,19 @@ key; entries are authenticated and encrypted with AES-GCM, partitioned by Window
 `S PASSWORD_FROM_CACHE` is sent only after a successful Hello-protected retrieval.
 
 If Hello is cancelled, unavailable, or fails to return a usable PRF, the user enters the passphrase normally. There is
-no silent fallback to an independently decryptable DPAPI cache. `SETERROR` bypasses cache for the next attempt;
-`CLEARPASSPHRASE` removes the matching origin's entry. Old `pfwv2:` PasswordVault entries are not imported.
+no silent fallback to an independently decryptable DPAPI cache. `SETERROR` bypasses cache for the next attempt, and
+when it follows a passphrase this session served from the cache, that stale entry is removed; an error after typed
+input leaves the entry alone. `CLEARPASSPHRASE` removes the matching origin's entry. Old `pfwv2:` PasswordVault
+entries are not imported.
 
 **Smart cards and hardware tokens never use this cache.** `SETKEYINFO --clear` and card/token prompts disable read and
 write, even when external caching is otherwise allowed. Their PIN handling remains with the token, `gpg-agent`, and
-`scdaemon`.
+`scdaemon`. `SETKEYINFO --clear`, which `gpg-agent` sends for card PINs, is the control that matters; the additional
+check on the prompt text only recognizes English card wording and is a secondary safeguard.
+
+If the Windows Hello passkey is deleted from Windows settings, existing entries can no longer be decrypted and new
+ones cannot be saved until `--clear-cache` removes them. The command clears the local files even when the passkey is
+already gone and says so when it could not delete the passkey itself.
 
 Use `--check` for noninteractive diagnostics. It reports Windows Hello platform-authenticator prerequisites, but does
 not enroll a credential or claim that PRF has been proven without an actual assertion. To revoke the local cache
@@ -310,8 +360,12 @@ Windows** key entry. It does not clear a paired WSL origin; use `CLEARPASSPHRASE
 entries explicitly.
 
 Buffers owned by this application are bounded and wiped after use. Windows credential-provider memory, OS transports,
-runtime copies, swap, and crash dumps cannot all be erased by the application. A process running as the same user can
-still request an additional Hello operation; users should reject unexpected verification prompts.
+runtime copies, swap, and crash dumps cannot all be erased by the application.
+
+The cache does not defend against software already running as the same Windows user. Such a process can read the
+encrypted entries and ask Windows Hello for the same credential, and that prompt looks identical to a legitimate one.
+Hello verification is the only barrier: approve a prompt only when you have just started a GnuPG operation, and
+reject any verification you did not expect.
 
 ### Pinentry protocol behavior
 
@@ -333,7 +387,8 @@ Local Windows sessions decode dialog text as UTF-8 first, then fall back to the 
 
 `SETKEYINFO --clear` disables cache eligibility for the current card/token request. A key with a stable 40-hex-digit
 grip, optionally prefixed by `n/`, `s/`, or `u/`, may be eligible for software-key caching. `SETERROR` suppresses one
-cache read so a rejected passphrase is not immediately reused. Successful repeat-passphrase input sends
+cache read so a rejected passphrase is not immediately reused, and removes the entry it was read from. A passphrase
+too long for the secret limit returns a "too large" error instead of a partial value. Successful repeat-passphrase input sends
 `S PIN_REPEATED`; a successful Hello-protected cache read sends `S PASSWORD_FROM_CACHE`. Responses use Assuan's bounded
 binary-safe data escaping, and cancellation, timeout, and repeat mismatch return protocol errors rather than a partial
 password.
@@ -344,7 +399,7 @@ password.
 
 ```powershell
 dotnet restore PinentryForWindows.slnx
-dotnet test PinentryForWindows.slnx -c Debug
+dotnet test --solution PinentryForWindows.slnx -c Debug
 dotnet publish src/PinentryForWindows/PinentryForWindows.csproj -c Release -r win-x64
 pwsh -NoProfile -File tests/Test-PinentryForWindows.ps1
 pwsh -NoProfile -File tests/Test-InstallerConfig.ps1
@@ -376,8 +431,8 @@ private memory are process-level measurements.
 Build and test the Linux relay in WSL2:
 
 ```bash
-dotnet test tests/PinentryForWindows.Core.Tests/PinentryForWindows.Core.Tests.csproj -c Debug
-dotnet test tests/PinentryForWindows.Relay.Tests/PinentryForWindows.Relay.Tests.csproj -c Debug
+dotnet test --project tests/PinentryForWindows.Core.Tests/PinentryForWindows.Core.Tests.csproj -c Debug
+dotnet test --project tests/PinentryForWindows.Relay.Tests/PinentryForWindows.Relay.Tests.csproj -c Debug
 dotnet publish src/PinentryForWindows.Relay/PinentryForWindows.Relay.csproj -c Release -r linux-x64
 ```
 
@@ -386,6 +441,14 @@ architecture-suffixed assets listed above. Native Windows Security, Windows Hell
 interactive Windows 11/WSL2 validation in addition to unit tests.
 The release workflow also runs tests and a published-binary smoke check on each native x64/ARM64 runner before creating
 a release; ARM64 remains unverified until those GitHub jobs run.
+
+Releases published after this workflow change carry a build provenance attestation for each binary, in addition to
+`SHA256SUMS.txt`. Verify a downloaded file with the GitHub CLI; earlier releases have no attestation, and the binaries
+are not Authenticode-signed yet:
+
+```bash
+gh attestation verify pfw.x64.exe --repo baliestri/pinentry-for-windows
+```
 
 Until a release contains the assets listed at the top of this README, the install scripts cannot download this rewrite.
 Use the published Windows `pfw.exe` with the [manual Windows configuration](#install-on-windows); for WSL, publish the
