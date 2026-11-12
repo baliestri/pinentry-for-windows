@@ -13,9 +13,10 @@ namespace PinentryForWindows.Relay.Relay;
 [SupportedOSPlatform("linux")]
 internal static class RelayRunner {
   private const int PORT = 44986;
-  private static readonly TimeSpan _connectionBudget = TimeSpan.FromSeconds(15);
+  private readonly static TimeSpan _connectionBudget = TimeSpan.FromSeconds(15);
 
   public static async Task RunAsync(RelayIdentity identity, CancellationToken ct) {
+    identity.EnsureCurrent();
     using var clientCertificate = identity.LoadClientCertificate();
     VerboseLog.Write(VerboseEvent.IdentityLoaded);
     var elapsed = Stopwatch.StartNew();

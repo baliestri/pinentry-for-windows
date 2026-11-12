@@ -21,21 +21,7 @@ internal sealed class BrokerIdentity(string directory) {
     }
 
     if (!File.Exists(PrivatePath)) {
-      using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-      var request = new CertificateRequest("CN=pfw-broker", key, HashAlgorithmName.SHA256);
-      request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
-      request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false));
-
-      using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1),
-        DateTimeOffset.UtcNow.AddYears(1));
-      var pkcs12 = certificate.Export(X509ContentType.Pkcs12, string.Empty);
-
-      try {
-        var protectedBytes = ProtectedData.Protect(pkcs12, null, DataProtectionScope.CurrentUser);
-        File.WriteAllBytes(PrivatePath, protectedBytes);
-        File.WriteAllBytes(PublicPath, certificate.Export(X509ContentType.Cert));
-      }
-      finally { CryptographicOperations.ZeroMemory(pkcs12); }
+      WriteNewIdentity();
     }
 
     var encrypted = File.ReadAllBytes(PrivatePath);
@@ -54,6 +40,89 @@ internal sealed class BrokerIdentity(string directory) {
       throw new InvalidDataException("Broker certificate has no private key.");
     }
     finally { CryptographicOperations.ZeroMemory(clear); }
+  }
+
+  /// <summary>
+  ///   Replaces the broker key and certificate while keeping every paired client. Each relay must pin the
+  ///   new public certificate before it can connect again.
+  /// </summary>
+  public void RenewServerCertificate() {
+    if (!File.Exists(PrivatePath) ||
+        !File.Exists(PublicPath)) {
+      throw new InvalidOperationException("Broker identity does not exist; initialize it first.");
+    }
+
+    WriteNewIdentity();
+  }
+
+  /// <summary>Expiry of the broker certificate, or <see langword="null" /> when no identity exists.</summary>
+  public DateTime? ServerCertificateExpiry() {
+    if (!File.Exists(PublicPath)) {
+      return null;
+    }
+
+    using var certificate = X509CertificateLoader.LoadCertificateFromFile(PublicPath);
+    return certificate.NotAfter.ToUniversalTime();
+  }
+
+  /// <summary>Paired origins with the expiry of their pinned client certificate.</summary>
+  public IReadOnlyList<(string Origin, DateTime Expiry)> ClientCertificateExpiries() {
+    var result = new List<(string Origin, DateTime Expiry)>();
+    if (!Directory.Exists(ClientsPath)) {
+      return result;
+    }
+
+    foreach (var originPath in Directory.EnumerateFiles(ClientsPath, "*.origin")) {
+      try {
+        using var certificate = X509CertificateLoader.LoadCertificateFromFile(Path.ChangeExtension(originPath, ".cer"));
+        result.Add((File.ReadAllText(originPath, Encoding.UTF8), certificate.NotAfter.ToUniversalTime()));
+      }
+      catch (Exception error) when (error is IOException or CryptographicException) {
+        /* Ignore a concurrently revoked or damaged pairing. */
+      }
+    }
+
+    return result;
+  }
+
+  /// <summary>
+  ///   Pairs a renewed client certificate and drops every other pairing of the same origin, so a renewal
+  ///   never leaves the previous certificate accepted.
+  /// </summary>
+  public void ReplaceClient(string certificatePath, string origin) {
+    using var certificate = X509CertificateLoader.LoadCertificateFromFile(certificatePath);
+    var fingerprint = Fingerprint(certificate);
+    if (!File.Exists(Path.Combine(ClientsPath, fingerprint + ".origin"))) {
+      ApproveClient(certificatePath, origin);
+    }
+
+    foreach (var originPath in Directory.EnumerateFiles(ClientsPath, "*.origin")) {
+      if (string.Equals(Path.GetFileNameWithoutExtension(originPath), fingerprint, StringComparison.Ordinal) ||
+          !string.Equals(File.ReadAllText(originPath, Encoding.UTF8), origin, StringComparison.Ordinal)) {
+        continue;
+      }
+
+      File.Delete(originPath);
+      File.Delete(Path.ChangeExtension(originPath, ".cer"));
+    }
+  }
+
+  private void WriteNewIdentity() {
+    using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+    var request = new CertificateRequest("CN=pfw-broker", key, HashAlgorithmName.SHA256);
+    request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
+    request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false));
+
+    using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1),
+      DateTimeOffset.UtcNow.AddYears(1));
+    var pkcs12 = certificate.Export(X509ContentType.Pkcs12, string.Empty);
+
+    try {
+      var protectedBytes = ProtectedData.Protect(pkcs12, null, DataProtectionScope.CurrentUser);
+      File.WriteAllBytes(PrivatePath, protectedBytes);
+      File.WriteAllBytes(PublicPath, certificate.Export(X509ContentType.Cert));
+    }
+    finally { CryptographicOperations.ZeroMemory(pkcs12); }
   }
 
   public void ApproveClient(string certificatePath, string origin) {

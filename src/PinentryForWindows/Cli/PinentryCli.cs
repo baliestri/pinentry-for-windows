@@ -63,10 +63,10 @@ internal static class PinentryCli {
 
   private static bool LooksLikeDirectory(string value)
     => Directory.Exists(value) || Path.IsPathFullyQualified(value) || value.StartsWith('.') || value.Contains('\\') ||
-       (value.Contains('/') &&
-        !value.StartsWith("n/", StringComparison.Ordinal) &&
-        !value.StartsWith("s/", StringComparison.Ordinal) &&
-        !value.StartsWith("u/", StringComparison.Ordinal));
+       value.Contains('/') &&
+       !value.StartsWith("n/", StringComparison.Ordinal) &&
+       !value.StartsWith("s/", StringComparison.Ordinal) &&
+       !value.StartsWith("u/", StringComparison.Ordinal);
 
   private static void PrintUsage(TextWriter output) {
     output.WriteLine("Usage: pfw.exe [command]");
@@ -76,7 +76,9 @@ internal static class PinentryCli {
     output.WriteLine("  --clear-cache <dir>     Clear a cache in a specified data directory");
     output.WriteLine("  --init-broker <dir>     Create the broker identity");
     output.WriteLine("  --approve-client <dir> <cert> <origin>  Pair a WSL client");
+    output.WriteLine("  --replace-client <dir> <cert> <origin>  Pair a renewed WSL client certificate");
     output.WriteLine("  --revoke-client <dir> <cert>          Revoke a WSL client");
+    output.WriteLine("  --renew-broker <dir>    Replace the broker certificate, keeping paired clients");
     output.WriteLine("  --reset-broker <dir>    Remove broker pairing material");
     output.WriteLine("  --vm-id <distribution>  Find the running WSL VM");
     output.WriteLine("  --broker <dir>          Run the interactive Windows broker");

@@ -15,12 +15,29 @@ namespace PinentryForWindows.Broker;
 
 internal sealed class BrokerHost(BrokerIdentity identity, IPinentryUi ui, IPinentryCache cache, string productVersion) {
   private const int MAX_SESSIONS = 8;
-  private static readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(2);
+  private readonly static TimeSpan _pollInterval = TimeSpan.FromSeconds(2);
 
   // A VM without the paired distribution running needs wsl.exe to notice it starting; the relay waits 15 s.
-  private static readonly TimeSpan _distributionInterval = TimeSpan.FromSeconds(5);
+  private readonly static TimeSpan _distributionInterval = TimeSpan.FromSeconds(5);
   private readonly ConcurrentDictionary<long, Task> _active = new();
   private long _nextSession;
+
+  private static async Task RejectExpiredCertificateAsync(DateTime expiry) {
+    var now = DateTime.UtcNow;
+    if (CertificateLifetime.IsExpired(expiry, now)) {
+      // The relay rejects an expired pin, so listening would only produce silent handshake failures.
+      await Console.Error.WriteLineAsync(
+          "Broker certificate has expired. Run pfw.exe --renew-broker and pin the new certificate in each WSL relay.")
+        .ConfigureAwait(false);
+      throw new InvalidOperationException("Broker certificate has expired.");
+    }
+
+    if (CertificateLifetime.IsExpiringSoon(expiry, now)) {
+      await Console.Error.WriteLineAsync(
+        $"Broker certificate expires in {CertificateLifetime.DaysLeft(expiry, now)} day(s); " +
+        "renew it with pfw.exe --renew-broker.").ConfigureAwait(false);
+    }
+  }
 
   public async Task RunAsync(CancellationToken ct) {
     using var registration = Registry.LocalMachine
@@ -32,6 +49,7 @@ internal sealed class BrokerHost(BrokerIdentity identity, IPinentryUi ui, IPinen
     }
 
     using var serverCertificate = identity.GetOrCreateServerCertificate();
+    await RejectExpiredCertificateAsync(serverCertificate.NotAfter.ToUniversalTime()).ConfigureAwait(false);
     using var permits = new SemaphoreSlim(MAX_SESSIONS);
     var waitingForVm = false;
 
@@ -72,7 +90,7 @@ internal sealed class BrokerHost(BrokerIdentity identity, IPinentryUi ui, IPinen
   }
 
   private async Task AcceptWhileVmUnchangedAsync(Socket listener, Guid vmId, string snapshot,
-  X509Certificate2 serverCertificate, SemaphoreSlim permits, CancellationToken ct) {
+    X509Certificate2 serverCertificate, SemaphoreSlim permits, CancellationToken ct) {
     while (!ct.IsCancellationRequested) {
       await permits.WaitAsync(ct).ConfigureAwait(false);
       try {
@@ -101,7 +119,8 @@ internal sealed class BrokerHost(BrokerIdentity identity, IPinentryUi ui, IPinen
         var id = Interlocked.Increment(ref _nextSession);
         var session = HandleAsync(socket, serverCertificate, ct);
         _active[id] = session;
-        _ = session.ContinueWith(completed => {
+        _ = session.ContinueWith(completed =>
+        {
           _active.TryRemove(id, out var _);
           permits.Release();
           if (completed.IsFaulted) {

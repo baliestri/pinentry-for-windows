@@ -25,6 +25,49 @@ internal sealed class RelayIdentity(string directory) {
       throw new InvalidOperationException("Relay identity already exists.");
     }
 
+    WriteNewIdentity();
+  }
+
+  /// <summary>
+  ///   Replaces the client key and certificate while keeping the pinned broker. Windows must pair the new
+  ///   public certificate; the previous one stops being presented immediately.
+  /// </summary>
+  public void Renew() {
+    if (!OperatingSystem.IsLinux()) {
+      throw new PlatformNotSupportedException();
+    }
+
+    if (!File.Exists(PrivateKeyPath)) {
+      throw new InvalidOperationException("Relay identity does not exist; initialize it first.");
+    }
+
+    WriteNewIdentity();
+  }
+
+  /// <summary>Fails with a specific error when either pinned certificate is past its validity.</summary>
+  public void EnsureCurrent() {
+    var now = DateTime.UtcNow;
+    if (File.Exists(PublicCertificatePath)) {
+      using var client = X509CertificateLoader.LoadCertificateFromFile(PublicCertificatePath);
+      if (client.NotAfter.ToUniversalTime() <= now) {
+        throw new IdentityExpiredException(
+          "Relay certificate has expired. Renew it with pfw-relay --renew and pair it again on Windows.");
+      }
+    }
+
+    if (!File.Exists(BrokerPath)) {
+      return;
+    }
+
+    using var broker = X509CertificateLoader.LoadCertificateFromFile(BrokerPath);
+    if (broker.NotAfter.ToUniversalTime() <= now) {
+      throw new IdentityExpiredException(
+        "Pinned broker certificate has expired. Renew it on Windows with pfw.exe --renew-broker and pin the " +
+        "new certificate with pfw-relay --trust-broker <dir> <cert> --replace.");
+    }
+  }
+
+  private void WriteNewIdentity() {
     using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     var request = new CertificateRequest("CN=pfw-relay", key, HashAlgorithmName.SHA256);
     request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
@@ -34,24 +77,33 @@ internal sealed class RelayIdentity(string directory) {
       DateTimeOffset.UtcNow.AddYears(1));
     var pkcs12 = certificate.Export(X509ContentType.Pkcs12, string.Empty);
 
+    // Stage both files first so a failure never destroys an identity that is being renewed.
+    var stagedKey = PrivateKeyPath + ".new";
+    var stagedCertificate = PublicCertificatePath + ".new";
     try {
-      File.WriteAllBytes(PrivateKeyPath, pkcs12);
-      File.SetUnixFileMode(PrivateKeyPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+      using (var stream = new FileStream(stagedKey, new FileStreamOptions {
+               Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None,
+               UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite
+             })) {
+        stream.Write(pkcs12);
+      }
+
+      File.SetUnixFileMode(stagedKey, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+      File.WriteAllBytes(stagedCertificate, certificate.Export(X509ContentType.Cert));
+      File.Move(stagedKey, PrivateKeyPath, true);
+      File.Move(stagedCertificate, PublicCertificatePath, true);
       CheckPrivatePermissions();
-      File.WriteAllBytes(PublicCertificatePath, certificate.Export(X509ContentType.Cert));
     }
-    catch {
-      if (File.Exists(PrivateKeyPath)) {
-        File.Delete(PrivateKeyPath);
+    finally {
+      CryptographicOperations.ZeroMemory(pkcs12);
+      if (File.Exists(stagedKey)) {
+        File.Delete(stagedKey);
       }
 
-      if (File.Exists(PublicCertificatePath)) {
-        File.Delete(PublicCertificatePath);
+      if (File.Exists(stagedCertificate)) {
+        File.Delete(stagedCertificate);
       }
-
-      throw;
     }
-    finally { CryptographicOperations.ZeroMemory(pkcs12); }
   }
 
   public X509Certificate2 LoadClientCertificate() {
@@ -63,7 +115,7 @@ internal sealed class RelayIdentity(string directory) {
     finally { CryptographicOperations.ZeroMemory(pkcs12); }
   }
 
-  public void TrustBroker(string certificatePath) {
+  public void TrustBroker(string certificatePath, bool replace = false) {
     using var certificate = X509CertificateLoader.LoadCertificateFromFile(certificatePath);
     if (certificate.NotBefore.ToUniversalTime() > DateTime.UtcNow ||
         certificate.NotAfter.ToUniversalTime() <= DateTime.UtcNow) {
@@ -72,7 +124,8 @@ internal sealed class RelayIdentity(string directory) {
 
     Directory.CreateDirectory(directory);
     var publicBytes = certificate.Export(X509ContentType.Cert);
-    if (File.Exists(BrokerPath)) {
+    if (File.Exists(BrokerPath) &&
+        !replace) {
       if (!CryptographicOperations.FixedTimeEquals(File.ReadAllBytes(BrokerPath), publicBytes)) {
         throw new InvalidOperationException("A different broker identity is already pinned.");
       }
@@ -100,11 +153,10 @@ internal sealed class RelayIdentity(string directory) {
   }
 
   public void Remove() {
-    foreach (var path in new[] { PrivateKeyPath, PublicCertificatePath, BrokerPath }) {
+    foreach (var path in new[] { PrivateKeyPath, PublicCertificatePath, BrokerPath })
       if (File.Exists(path)) {
         File.Delete(path);
       }
-    }
 
     if (Directory.Exists(directory) &&
         !Directory.EnumerateFileSystemEntries(directory).Any()) {

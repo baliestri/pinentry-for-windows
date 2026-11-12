@@ -11,7 +11,8 @@ if (!OperatingSystem.IsLinux()) {
 }
 
 using var stop = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) => {
+Console.CancelKeyPress += (_, e) =>
+{
   e.Cancel = true;
   stop.Cancel();
 };
@@ -19,15 +20,28 @@ Console.CancelKeyPress += (_, e) => {
 try {
   VerboseLog.Write(VerboseEvent.CommandStarted);
   switch (args) {
-    case ["--init", var _]: {
+    case ["--init", var _]:
+    {
       var identity = new RelayIdentity(args[1]);
       identity.Create();
       Console.WriteLine($"Relay public certificate: {identity.PublicCertificatePath}");
       return 0;
     }
+    case ["--renew", var _]:
+    {
+      var identity = new RelayIdentity(args[1]);
+      identity.Renew();
+      Console.WriteLine($"Relay certificate renewed: {identity.PublicCertificatePath}");
+      Console.WriteLine("Pair it on Windows with pfw.exe --replace-client before the next use.");
+      return 0;
+    }
     case ["--trust-broker", var _, var _]:
       new RelayIdentity(args[1]).TrustBroker(args[2]);
       Console.WriteLine("Broker identity pinned.");
+      return 0;
+    case ["--trust-broker", var _, var _, "--replace"]:
+      new RelayIdentity(args[1]).TrustBroker(args[2], true);
+      Console.WriteLine("Broker identity replaced.");
       return 0;
     case ["--remove-identity", var _]:
       new RelayIdentity(args[1]).Remove();
@@ -53,6 +67,10 @@ try {
   return 0;
 }
 catch (OperationCanceledException) {
+  return 1;
+}
+catch (IdentityExpiredException error) {
+  Console.Error.WriteLine(error.Message);
   return 1;
 }
 catch (Exception error) {

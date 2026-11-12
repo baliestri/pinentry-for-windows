@@ -2,6 +2,9 @@
 // See the LICENSE file in the repository root for full license text.
 
 using System.Diagnostics;
+using System.Globalization;
+using System.Security.Cryptography;
+using PinentryForWindows.Broker;
 using PinentryForWindows.Cache;
 
 namespace PinentryForWindows.Cli;
@@ -14,10 +17,45 @@ internal static class PinentryDiagnostics {
       ? "  [OK] Windows Hello platform authenticator available (PRF verified only when used)"
       : "  [WARN] Windows Hello platform authenticator unavailable; persistent cache disabled");
     Console.WriteLine($"  [OK] Cache data directory: {PinentryPaths.DataDirectory}");
+    ReportBridgeCertificates(new BrokerIdentity(Path.Combine(PinentryPaths.DataDirectory, "broker")), DateTime.UtcNow);
 
     await CheckGnuPgAsync(ct).ConfigureAwait(false);
 
     return 0;
+  }
+
+  private static void ReportBridgeCertificates(BrokerIdentity identity, DateTime now) {
+    DateTime? broker;
+    IReadOnlyList<(string Origin, DateTime Expiry)> clients;
+    try {
+      broker = identity.ServerCertificateExpiry();
+      clients = identity.ClientCertificateExpiries();
+    }
+    catch (Exception error) when (error is IOException or CryptographicException or UnauthorizedAccessException) {
+      Console.WriteLine("  [WARN] WSL bridge certificates could not be read");
+      return;
+    }
+
+    if (broker is null) {
+      return; // The WSL bridge is optional and not configured for this user.
+    }
+
+    ReportCertificate("WSL bridge broker certificate", broker.Value, now, "pfw.exe --renew-broker");
+    foreach (var (origin, expiry) in clients)
+      ReportCertificate($"WSL client certificate for {origin}", expiry, now, "pfw-relay --renew in that distribution");
+  }
+
+  private static void ReportCertificate(string subject, DateTime expiry, DateTime now, string remedy) {
+    var date = expiry.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    if (CertificateLifetime.IsExpired(expiry, now)) {
+      Console.WriteLine($"  [WARN] {subject} expired on {date}; renew it with {remedy}");
+    }
+    else if (CertificateLifetime.IsExpiringSoon(expiry, now)) {
+      Console.WriteLine($"  [WARN] {subject} expires on {date}; renew it with {remedy}");
+    }
+    else {
+      Console.WriteLine($"  [OK] {subject} valid until {date}");
+    }
   }
 
   private static async Task CheckGnuPgAsync(CancellationToken ct) {

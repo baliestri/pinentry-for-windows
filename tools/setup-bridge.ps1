@@ -4,7 +4,9 @@ param(
   [string]$Distribution,
   [string]$RelayCertificatePath,
   [switch]$NoAutostart,
-  [switch]$RemoveAutostart
+  [switch]$RemoveAutostart,
+  [switch]$RenewBroker,
+  [switch]$ReplacePairing
 )
 
 $ErrorActionPreference = 'Stop'
@@ -89,10 +91,26 @@ if ($RemoveAutostart)
   exit 0
 }
 
+if ($ReplacePairing -and -not $RelayCertificatePath)
+{
+  throw '-ReplacePairing requires -RelayCertificatePath and -Distribution.'
+}
+
 & $ExecutablePath --init-broker $BrokerDirectory
 if ($LASTEXITCODE -ne 0)
 {
   throw 'Broker identity initialization failed.'
+}
+
+if ($RenewBroker)
+{
+  & $ExecutablePath --renew-broker $BrokerDirectory
+  if ($LASTEXITCODE -ne 0)
+  {
+    throw 'Broker certificate renewal failed.'
+  }
+
+  Write-Host 'Restart the broker, then pin the new certificate in each WSL relay with --broker-certificate <path> --replace-broker.'
 }
 
 if ($RelayCertificatePath)
@@ -108,7 +126,8 @@ if ($RelayCertificatePath)
     throw "Relay public certificate not found: $RelayCertificatePath"
   }
 
-  & $ExecutablePath --approve-client $BrokerDirectory $RelayCertificatePath "wsl:$Distribution"
+  $pairingCommand = if ($ReplacePairing) { '--replace-client' } else { '--approve-client' }
+  & $ExecutablePath $pairingCommand $BrokerDirectory $RelayCertificatePath "wsl:$Distribution"
   if ($LASTEXITCODE -ne 0)
   {
     throw 'Relay pairing failed.'
