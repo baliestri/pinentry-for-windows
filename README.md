@@ -7,12 +7,12 @@ the WSL relay forwards only the pinentry conversation to the Windows desktop.
 > [!NOTE]
 > These instructions describe the current rewrite. Use a release that contains `pfw.x64.exe` / `pfw.arm64.exe` and
 > `pfw-relay-x64` / `pfw-relay-arm64`. The older v1.2.1 release does not contain this Windows/WSL package; until a new
-> release is published, [build from source](#build-and-test) to try it.
+> release is published, [build from source](#build-from-source) to try it.
 
 ## What it looks like
 
 | Signing request from Windows                                                                                                               | Signing request from WSL2 (`archlinux`)                                                                                                           |
-|:-------------------------------------------------------------------------------------------------------------------------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------|
+| :----------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
 | <img src=".github/images/windows-security-windows.png" alt="Windows Security passphrase prompt for a Windows signing request" width="420"> | <img src=".github/images/windows-security-wsl.png" alt="Windows Security passphrase prompt labeled Pinentry for Windows [archlinux]" width="420"> |
 
 Both are real Windows Security windows opened with **fictitious signing requests** for these screenshots. The WSL title
@@ -33,7 +33,7 @@ shows the paired distribution; there is no editable username field. You never ne
 ## Choose where your key lives
 
 | Your GnuPG key is in | Configure this `pinentry-program`    | The prompt appears on                              |
-|:---------------------|:-------------------------------------|:---------------------------------------------------|
+| :------------------- | :----------------------------------- | :------------------------------------------------- |
 | Windows              | `pfw.x64.exe` or `pfw.arm64.exe`     | Windows desktop                                    |
 | WSL2                 | `pfw-relay-x64` or `pfw-relay-arm64` | Windows desktop, labeled with the WSL distribution |
 
@@ -197,7 +197,7 @@ initial device credential and asks for a fresh verification whenever the persist
 below are from that **first-time setup** (later reads also require Hello):
 
 | Create the protected credential                                                                                                                        | Confirm with Windows Hello                                                                                                                                 |
-|:-------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| :----------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | <img src=".github/images/windows-hello-setup.png" alt="Windows Security offering to save the Pinentry for Windows passkey on this device" width="400"> | <img src=".github/images/windows-hello.png" alt="Windows Hello asking for a PIN while creating the protected Pinentry for Windows credential" width="400"> |
 
 If Hello is cancelled or unavailable, enter the passphrase in Windows Security instead. **Smart-card and hardware-token
@@ -214,7 +214,7 @@ To remove the optional persistent cache credential and all its entries, run:
 ## Troubleshooting
 
 | What you see                          | What to check                                                                                                                                                                                                            |
-|:--------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| :------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No prompt on Windows                  | Run `pfw.exe --check` using your installed path, check the Windows `gpg-agent.conf`, then restart that agent with `gpgconf --kill gpg-agent`.                                                                            |
 | No WSL prompt                         | Start the broker in your Windows session, confirm the one-time Hyper-V service registration and WSL certificate pairing, and activate the relay in that distribution. Restart its agent with `gpgconf --kill gpg-agent`. |
 | Relay refuses its private key         | Keep `~/.config/PinentryForWindows/relay` on the **Linux** filesystem, not under `/mnt/c`; its directory needs `0700` and its private key `0600`.                                                                        |
@@ -278,7 +278,7 @@ The relay writes only Assuan to stdout; redacted errors and opt-in diagnostics g
 The Windows binary accepts these commands (paths are local to Windows):
 
 | Invocation                                                              | Purpose                                                                                              |
-|-------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `pfw.exe`                                                               | Serve one local Assuan pinentry session on stdin/stdout.                                             |
 | `pfw.exe --help` or `-h`                                                | Show command usage.                                                                                  |
 | `pfw.exe --check`                                                       | Report local prerequisites and GnuPG configuration without enrolling a Hello credential.             |
@@ -297,7 +297,7 @@ The Windows binary accepts these commands (paths are local to Windows):
 `--ui-helper` is an internal, per-prompt process mode; it is not a user command. The Linux binary accepts:
 
 | Invocation                                                          | Purpose                                                            |
-|---------------------------------------------------------------------|--------------------------------------------------------------------|
+| ------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `pfw-relay`                                                         | Serve the WSL pinentry using `~/.config/PinentryForWindows/relay`. |
 | `pfw-relay --run <relay-directory>`                                 | Serve using an explicit relay identity directory.                  |
 | `pfw-relay --init <relay-directory>`                                | Create the client key and public `client.cer`.                     |
@@ -370,7 +370,7 @@ reject any verification you did not expect.
 ### Pinentry protocol behavior
 
 | Assuan command                                 | Behavior                                                                                                                                                     |
-|------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GETPIN`                                       | Show Windows Security and return the passphrase, or a cancellation/timeout error.                                                                            |
 | `CONFIRM` / `CONFIRM --one-button` / `MESSAGE` | Show a native confirmation or information dialog.                                                                                                            |
 | `GETINFO version\|pid\|flavor\|ttyinfo`        | Return executable/protocol metadata.                                                                                                                         |
@@ -398,71 +398,36 @@ password.
 
 </details>
 
-## Build and test
+## Verify a release
 
-```powershell
-dotnet restore PinentryForWindows.slnx
-dotnet test --solution PinentryForWindows.slnx -c Debug
-dotnet publish src/PinentryForWindows/PinentryForWindows.csproj -c Release -r win-x64
-pwsh -NoProfile -File tests/Test-PinentryForWindows.ps1
-pwsh -NoProfile -File tests/Test-InstallerConfig.ps1
-pwsh -NoProfile -File tests/Test-BridgeSetup.ps1
-```
-
-The WSL installer has an isolated uninstallation check that uses a disposable HOME and fake GnuPG executable:
-
-```bash
-bash tests/Test-InstallerWsl.sh
-```
-
-The protocol script defaults to non-interactive checks with an isolated cache under `artifacts/`. Add
-`-Interactive -RequireWindowsHelloCache` for Windows Security and Hello checks. Add
-`-IncludeGpgKeyTests -IncludeCacheTests -IncludeDecryptTest` to exercise a disposable, passphrase-protected GPG key in a
-temporary GnuPG home; use only the script's dummy passphrase (`teste123` by default). The installer test uses a fake
-`gpgconf` and never changes the primary agent configuration.
-
-To measure the local `GETPIN` dispatch-to-Windows Security API interval, run
-`pwsh -NoProfile -File tests/Measure-PinentryLatency.ps1 -Samples 21` with a published Windows x64 AOT binary available
-under `artifacts/release-check-win-x64/`. Cancel every dialog; no password is required. The script reports the first
-sample separately, median/p95 over the remaining prompts, and helper allocation/memory samples, then removes its
-numeric-only measurement files. Normal pinentry runs write no timing data; `PFW_LATENCY_LOG` and
-`PFW_HELPER_METRICS_LOG` enable the respective diagnostics explicitly with absolute output paths. The latency marker is
-captured immediately before the native credential prompt call and written after the dialog returns, so the user's
-response time is excluded. Helper allocation is managed allocation during one worker invocation; peak working set and
-private memory are process-level measurements.
-
-Build and test the Linux relay in WSL2:
-
-```bash
-dotnet test --project tests/PinentryForWindows.Core.Tests/PinentryForWindows.Core.Tests.csproj -c Debug
-dotnet test --project tests/PinentryForWindows.Relay.Tests/PinentryForWindows.Relay.Tests.csproj -c Debug
-dotnet publish src/PinentryForWindows.Relay/PinentryForWindows.Relay.csproj -c Release -r linux-x64
-```
-
-The published project outputs are `pfw.exe` and `pfw-relay`; the release workflow stages them as the
-architecture-suffixed assets listed above. Native Windows Security, Windows Hello, GnuPG and Hyper-V/vsock require real
-interactive Windows 11/WSL2 validation in addition to unit tests.
-The release workflow also runs tests and a published-binary smoke check on each native x64/ARM64 runner before creating
-a release; ARM64 remains unverified until those GitHub jobs run.
-
-Releases published after this workflow change carry a build provenance attestation for each binary, in addition to
-`SHA256SUMS.txt`. Verify a downloaded file with the GitHub CLI; earlier releases have no attestation, and the binaries
-are not Authenticode-signed yet:
+Releases published after the provenance workflow change carry a build provenance attestation for each binary, in
+addition to `SHA256SUMS.txt`. Verify a downloaded file with the GitHub CLI; earlier releases have no attestation, and
+the binaries are not Authenticode-signed yet:
 
 ```bash
 gh attestation verify pfw.x64.exe --repo baliestri/pinentry-for-windows
 ```
 
-Until a release contains the assets listed at the top of this README, the installation scripts cannot download this
-rewrite.
-Use the published Windows `pfw.exe` with the [manual Windows configuration](#install-on-windows); for WSL, publish the
-relay in the distribution, run its `--init` and `--trust-broker` commands from
-the [CLI reference](#technical-reference),
-approve its public certificate with `setup-bridge.ps1`, and set the relay's published path as WSL's `pinentry-program`.
-The Windows broker still needs the one-time service registration described above.
+## Build from source
 
-The source is grouped by responsibility: `PinentryForWindows.Core` holds Assuan commands and contracts, the Windows
-project handles broker/cache/UI, and `PinentryForWindows.Relay` handles the Linux connection and certificate validation.
+With the .NET 10 SDK, publish the Windows executable on Windows and the relay inside the WSL2 distribution:
+
+```powershell
+dotnet publish src/PinentryForWindows/PinentryForWindows.csproj -c Release -r win-x64
+```
+
+```bash
+dotnet publish src/PinentryForWindows.Relay/PinentryForWindows.Relay.csproj -c Release -r linux-x64
+```
+
+The outputs are `pfw.exe` and `pfw-relay`. Until a release contains the assets listed at the top of this README, the
+installation scripts cannot download this rewrite. Use the published Windows `pfw.exe` with the
+[manual Windows configuration](#install-on-windows); for WSL, run the relay's `--init` and `--trust-broker` commands
+from the [CLI reference](#technical-reference), approve its public certificate with `setup-bridge.ps1`, and set the
+relay's published path as WSL's `pinentry-program`. The Windows broker still needs the one-time service registration
+described above.
+
+Tests, validation scripts, and repository conventions are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Acknowledgments
 
@@ -471,5 +436,7 @@ project handles broker/cache/UI, and `PinentryForWindows.Relay` handles the Linu
   See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for its MIT notice.
 - [AssuanLibrary](https://github.com/baliestri/assuan-library) 2.0.1 supplies the Assuan protocol primitives and
   server-session API.
+
+## License
 
 Pinentry for Windows is licensed under the [zlib/libpng License](LICENSE.md).
