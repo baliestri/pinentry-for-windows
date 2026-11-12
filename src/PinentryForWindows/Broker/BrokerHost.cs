@@ -17,6 +17,9 @@ internal sealed class BrokerHost(BrokerIdentity identity, IPinentryUi ui, IPinen
   private const int MAX_SESSIONS = 8;
   private static readonly TimeSpan _pollInterval = TimeSpan.FromSeconds(2);
 
+  // A VM without the paired distribution running needs wsl.exe to notice it starting; the relay waits 15 s.
+  private static readonly TimeSpan _distributionInterval = TimeSpan.FromSeconds(5);
+
   public async Task RunAsync(CancellationToken ct) {
     using var registration = Registry.LocalMachine
       .OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Virtualization\GuestCommunicationServices\" +
@@ -34,14 +37,16 @@ internal sealed class BrokerHost(BrokerIdentity identity, IPinentryUi ui, IPinen
 
     try {
       while (!ct.IsCancellationRequested) {
-        var vmId = await TryGetPairedVmAsync(ct);
+        // wsl.exe is only started while a utility VM exists; an idle host costs no child processes.
+        var snapshot = WslVmPresence.Snapshot();
+        var vmId = snapshot.Length == 0 ? null : await TryGetPairedVmAsync(ct);
         if (vmId is null) {
           if (!waitingForVm) {
             VerboseLog.Write(VerboseEvent.BrokerWaitingForVm);
           }
 
           waitingForVm = true;
-          await Task.Delay(_pollInterval, ct);
+          await Task.Delay(snapshot.Length == 0 ? _pollInterval : _distributionInterval, ct);
           continue;
         }
 
@@ -62,10 +67,18 @@ internal sealed class BrokerHost(BrokerIdentity identity, IPinentryUi ui, IPinen
             try { socket = await listener.AcceptAsync(acceptDeadline.Token); }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested) {
               permits.Release();
-              if (await TryGetPairedVmAsync(ct) != vmId) {
+              var current = WslVmPresence.Snapshot();
+              if (current == snapshot) {
+                continue;
+              }
+
+              // The set of VM processes changed: confirm the bound identifier before trusting it again.
+              if (current.Length == 0 ||
+                  await TryGetPairedVmAsync(ct) != vmId) {
                 break;
               }
 
+              snapshot = current;
               continue;
             }
 

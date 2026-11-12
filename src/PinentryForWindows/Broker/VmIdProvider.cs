@@ -29,7 +29,8 @@ internal static class VmIdProvider {
 
   private static async Task<string?> InvokeWslAsync(Encoding encoding, CancellationToken ct,
   params string[] arguments) {
-    var start = new ProcessStartInfo("wsl.exe") {
+    // Never resolve wsl.exe through the application or current directory.
+    var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "wsl.exe")) {
       UseShellExecute = false,
       CreateNoWindow = true,
       RedirectStandardOutput = true,
