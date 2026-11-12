@@ -67,48 +67,41 @@ $Script:Failures = New-Object 'System.Collections.Generic.List[string]'
 $Script:Warnings = New-Object 'System.Collections.Generic.List[string]'
 $Script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
-function Write-Step
-{
+function Write-Step {
   param([string] $Message)
   Write-Host ""
   Write-Host "== $Message" -ForegroundColor Cyan
 }
 
-function Write-Case
-{
+function Write-Case {
   param([string] $Message)
   Write-Host " - $Message" -ForegroundColor Gray
 }
 
-function Add-Failure
-{
+function Add-Failure {
   param([string] $Message)
   [void] $Script:Failures.Add($Message)
   Write-Host "   FAIL: $Message" -ForegroundColor Red
 }
 
-function Add-Warning
-{
+function Add-Warning {
   param([string] $Message)
   [void] $Script:Warnings.Add($Message)
   Write-Host "   WARN: $Message" -ForegroundColor Yellow
 }
 
-function Assert-True
-{
+function Assert-True {
   param(
     [bool] $Condition,
     [string] $Message
   )
 
-  if (-not $Condition)
-  {
+  if (-not $Condition) {
     throw $Message
   }
 }
 
-function Invoke-CheckedCommand
-{
+function Invoke-CheckedCommand {
   param(
     [string] $FilePath,
     [string[]] $Arguments,
@@ -130,39 +123,31 @@ function Invoke-CheckedCommand
   $psi.RedirectStandardInput = $null -ne $StandardInput
   Set-ProcessEncoding -StartInfo $psi
 
-  foreach ($entry in $Environment.GetEnumerator())
-  {
+  foreach ($entry in $Environment.GetEnumerator()) {
     $psi.Environment[$entry.Key] = [string]$entry.Value
   }
 
   $process = [System.Diagnostics.Process]::Start($psi)
-  try
-  {
+  try {
     $stdoutTask = $process.StandardOutput.ReadToEndAsync()
     $stderrTask = $process.StandardError.ReadToEndAsync()
-    if ($null -ne $StandardInput)
-    {
+    if ($null -ne $StandardInput) {
       $bytes = $Script:Utf8NoBom.GetBytes($StandardInput + "`n")
-      try
-      {
+      try {
         $process.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
         $process.StandardInput.BaseStream.Flush()
       }
-      finally
-      {
+      finally {
         [System.Security.Cryptography.CryptographicOperations]::ZeroMemory($bytes)
         $process.StandardInput.Close()
       }
     }
 
-    if (-not $process.WaitForExit($TimeoutSeconds * 1000))
-    {
-      try
-      {
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+      try {
         $process.Kill($true)
       }
-      catch
-      {
+      catch {
         $process.Kill()
       }
       throw "$Description timed out after $TimeoutSeconds seconds."
@@ -170,8 +155,7 @@ function Invoke-CheckedCommand
 
     $stdout = $stdoutTask.GetAwaiter().GetResult()
     $stderr = $stderrTask.GetAwaiter().GetResult()
-    if ($process.ExitCode -ne 0)
-    {
+    if ($process.ExitCode -ne 0) {
       throw @"
 $Description failed with exit code $( $process.ExitCode ).
 STDOUT:
@@ -187,16 +171,12 @@ $stderr
       StdErr = $stderr
     }
   }
-  finally
-  {
-    if (-not $process.HasExited)
-    {
-      try
-      {
+  finally {
+    if (-not $process.HasExited) {
+      try {
         $process.Kill($true)
       }
-      catch
-      {
+      catch {
         $process.Kill()
       }
     }
@@ -204,19 +184,16 @@ $stderr
   }
 }
 
-function Join-ProcessArguments
-{
+function Join-ProcessArguments {
   param([string[]] $Arguments)
 
   ($Arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join ' '
 }
 
-function ConvertTo-ProcessArgument
-{
+function ConvertTo-ProcessArgument {
   param([string] $Argument)
 
-  if ($Argument -notmatch '[\s"]')
-  {
+  if ($Argument -notmatch '[\s"]') {
     return $Argument
   }
 
@@ -224,24 +201,20 @@ function ConvertTo-ProcessArgument
   [void] $builder.Append('"')
 
   $backslashes = 0
-  foreach ($char in $Argument.ToCharArray())
-  {
-    if ($char -eq '\')
-    {
+  foreach ($char in $Argument.ToCharArray()) {
+    if ($char -eq '\') {
       $backslashes++
       continue
     }
 
-    if ($char -eq '"')
-    {
+    if ($char -eq '"') {
       [void] $builder.Append(('\' * (($backslashes * 2) + 1)))
       [void] $builder.Append('"')
       $backslashes = 0
       continue
     }
 
-    if ($backslashes -gt 0)
-    {
+    if ($backslashes -gt 0) {
       [void] $builder.Append(('\' * $backslashes))
       $backslashes = 0
     }
@@ -249,8 +222,7 @@ function ConvertTo-ProcessArgument
     [void] $builder.Append($char)
   }
 
-  if ($backslashes -gt 0)
-  {
+  if ($backslashes -gt 0) {
     [void] $builder.Append(('\' * ($backslashes * 2)))
   }
 
@@ -258,11 +230,9 @@ function ConvertTo-ProcessArgument
   $builder.ToString()
 }
 
-function Get-PinentryExecutable
-{
+function Get-PinentryExecutable {
   $expected = Join-Path $Script:ProjectDir "bin\$Configuration\net10.0-windows10.0.26100.0\$Runtime\pfw.exe"
-  if (Test-Path $expected)
-  {
+  if (Test-Path $expected) {
     return (Resolve-Path $expected).Path
   }
 
@@ -271,34 +241,29 @@ function Get-PinentryExecutable
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 
-  if ($null -eq $candidate)
-  {
+  if ($null -eq $candidate) {
     throw "pfw.exe was not found. Run the script without -NoBuild, or build the project first."
   }
 
   $candidate.FullName
 }
 
-function Build-Pinentry
-{
-  if ($NoBuild)
-  {
+function Build-Pinentry {
+  if ($NoBuild) {
     Write-Step 'Skipping build'
     return
   }
 
   Write-Step 'Building PinentryForWindows'
 
-  if ($Restore)
-  {
+  if ($Restore) {
     [void](Invoke-CheckedCommand -FilePath 'dotnet' -Arguments @('restore', $Script:SlnPath) -Description 'dotnet restore')
   }
 
   [void](Invoke-CheckedCommand -FilePath 'dotnet' -Arguments @('build', $Script:SlnPath, '--configuration', $Configuration, '--no-restore') -Description 'dotnet build --no-restore')
 }
 
-function Start-PinentrySession
-{
+function Start-PinentrySession {
   param([string] $ExecutablePath)
 
   $psi = [System.Diagnostics.ProcessStartInfo]::new()
@@ -330,47 +295,34 @@ function Start-PinentrySession
   $session
 }
 
-function Stop-PinentrySession
-{
+function Stop-PinentrySession {
   param([pscustomobject] $Session)
 
-  if ($null -eq $Session -or $null -eq $Session.Process)
-  {
+  if ($null -eq $Session -or $null -eq $Session.Process) {
     return
   }
 
-  try
-  {
-    if (-not $Session.Process.HasExited)
-    {
-      try
-      {
+  try {
+    if (-not $Session.Process.HasExited) {
+      try {
         [void](Send-AssuanCommand -Session $Session -Command 'BYE' -TimeoutSeconds 5)
       }
-      catch
-      {
+      catch {
       }
     }
   }
-  finally
-  {
-    if (-not $Session.Process.HasExited)
-    {
-      try
-      {
+  finally {
+    if (-not $Session.Process.HasExited) {
+      try {
         $Session.Process.Kill($true)
       }
-      catch
-      {
-        try
-        {
-          if (-not $Session.Process.HasExited)
-          {
+      catch {
+        try {
+          if (-not $Session.Process.HasExited) {
             $Session.Process.Kill()
           }
         }
-        catch
-        {
+        catch {
         }
       }
     }
@@ -379,29 +331,24 @@ function Stop-PinentrySession
   }
 }
 
-function Set-ProcessEncoding
-{
+function Set-ProcessEncoding {
   param([System.Diagnostics.ProcessStartInfo] $StartInfo)
 
   $properties = $StartInfo.GetType().GetProperties().Name
-  if ($StartInfo.RedirectStandardInput -and $properties -contains 'StandardInputEncoding')
-  {
+  if ($StartInfo.RedirectStandardInput -and $properties -contains 'StandardInputEncoding') {
     $StartInfo.StandardInputEncoding = $Script:Utf8NoBom
   }
 
-  if ($StartInfo.RedirectStandardOutput -and $properties -contains 'StandardOutputEncoding')
-  {
+  if ($StartInfo.RedirectStandardOutput -and $properties -contains 'StandardOutputEncoding') {
     $StartInfo.StandardOutputEncoding = $Script:Utf8NoBom
   }
 
-  if ($StartInfo.RedirectStandardError -and $properties -contains 'StandardErrorEncoding')
-  {
+  if ($StartInfo.RedirectStandardError -and $properties -contains 'StandardErrorEncoding') {
     $StartInfo.StandardErrorEncoding = $Script:Utf8NoBom
   }
 }
 
-function Read-AssuanResponse
-{
+function Read-AssuanResponse {
   param(
     [pscustomobject] $Session,
     [int] $TimeoutSeconds = 60
@@ -411,28 +358,23 @@ function Read-AssuanResponse
   $deadline = [DateTimeOffset]::Now.AddSeconds($TimeoutSeconds)
   $readTask = $Session.Output.ReadLineAsync()
 
-  while ([DateTimeOffset]::Now -lt $deadline)
-  {
-    if ($Session.Process.HasExited -and -not $readTask.IsCompleted)
-    {
+  while ([DateTimeOffset]::Now -lt $deadline) {
+    if ($Session.Process.HasExited -and -not $readTask.IsCompleted) {
       throw "Pinentry exited before a complete Assuan response was received."
     }
 
-    if (-not $readTask.Wait(250))
-    {
+    if (-not $readTask.Wait(250)) {
       continue
     }
 
     $line = $readTask.Result
-    if ($null -eq $line)
-    {
+    if ($null -eq $line) {
       throw "Pinentry closed stdout before a complete Assuan response was received."
     }
 
     $lines.Add($line)
 
-    if ($line -match '^(OK|ERR)\b')
-    {
+    if ($line -match '^(OK|ERR)\b') {
       return [pscustomobject]@{
         Lines = [string[]]$lines
         Terminal = $line
@@ -445,8 +387,7 @@ function Read-AssuanResponse
   throw "Timed out after $TimeoutSeconds seconds waiting for Assuan response. Lines so far: $( $lines -join ' | ' )"
 }
 
-function Send-AssuanCommand
-{
+function Send-AssuanCommand {
   param(
     [pscustomobject] $Session,
     [string] $Command,
@@ -459,8 +400,7 @@ function Send-AssuanCommand
   Read-AssuanResponse -Session $Session -TimeoutSeconds $TimeoutSeconds
 }
 
-function Assert-AssuanResponse
-{
+function Assert-AssuanResponse {
   param(
     [pscustomobject] $Response,
     [string] $Command,
@@ -472,19 +412,16 @@ function Assert-AssuanResponse
   $text = $Response.Lines -join "`n"
   Assert-True ($Response.Terminal -match $TerminalPattern) "Command '$Command' returned '$( $Response.Terminal )', expected '$TerminalPattern'. Full response: $text"
 
-  foreach ($pattern in $RequiredPatterns)
-  {
+  foreach ($pattern in $RequiredPatterns) {
     Assert-True ($text -match $pattern) "Command '$Command' response did not match required pattern '$pattern'. Full response: $text"
   }
 
-  foreach ($pattern in $ForbiddenPatterns)
-  {
+  foreach ($pattern in $ForbiddenPatterns) {
     Assert-True ($text -notmatch $pattern) "Command '$Command' response matched forbidden pattern '$pattern'. Full response: $text"
   }
 }
 
-function Invoke-AssuanScenario
-{
+function Invoke-AssuanScenario {
   param(
     [string] $Name,
     [string] $ExecutablePath,
@@ -496,14 +433,11 @@ function Invoke-AssuanScenario
   $session = $null
   $passed = $false
 
-  try
-  {
+  try {
     $session = Start-PinentrySession -ExecutablePath $ExecutablePath
 
-    foreach ($step in $Steps)
-    {
-      if ($step.Instruction)
-      {
+    foreach ($step in $Steps) {
+      if ($step.Instruction) {
         Write-Host "   ACTION: $( $step.Instruction )" -ForegroundColor Yellow
       }
 
@@ -511,28 +445,22 @@ function Invoke-AssuanScenario
       Assert-AssuanResponse `
         -Response $response `
         -Command $step.Command `
-        -TerminalPattern $( if ($null -ne $step.TerminalPattern)
-      {
+        -TerminalPattern $( if ($null -ne $step.TerminalPattern) {
         $step.TerminalPattern
       }
-      else
-      {
+      else {
         '^OK\b'
       } ) `
-        -RequiredPatterns $( if ($null -ne $step.RequiredPatterns)
-      {
+        -RequiredPatterns $( if ($null -ne $step.RequiredPatterns) {
         $step.RequiredPatterns
       }
-      else
-      {
+      else {
         @()
       } ) `
-        -ForbiddenPatterns $( if ($null -ne $step.ForbiddenPatterns)
-      {
+        -ForbiddenPatterns $( if ($null -ne $step.ForbiddenPatterns) {
         $step.ForbiddenPatterns
       }
-      else
-      {
+      else {
         @()
       } )
     }
@@ -540,20 +468,17 @@ function Invoke-AssuanScenario
     Write-Host "   PASS" -ForegroundColor Green
     $passed = $true
   }
-  catch
-  {
+  catch {
     Add-Failure "${Name}: $( $_.Exception.Message )"
   }
-  finally
-  {
+  finally {
     Stop-PinentrySession -Session $session
   }
 
   $passed
 }
 
-function New-Step
-{
+function New-Step {
   param(
     [string] $Command,
     [string] $TerminalPattern = '^OK\b',
@@ -571,8 +496,7 @@ function New-Step
   }
 }
 
-function Invoke-ProtocolAndOptionTests
-{
+function Invoke-ProtocolAndOptionTests {
   param([string] $ExecutablePath)
 
   Write-Step 'Protocol and option coverage'
@@ -647,8 +571,7 @@ function Invoke-ProtocolAndOptionTests
   ))
 }
 
-function Invoke-CacheHitOrFallbackScenario
-{
+function Invoke-CacheHitOrFallbackScenario {
   param(
     [string] $ExecutablePath,
     [string] $CacheKey
@@ -659,16 +582,14 @@ function Invoke-CacheHitOrFallbackScenario
   $session = $null
   $passed = $false
 
-  try
-  {
+  try {
     $session = Start-PinentrySession -ExecutablePath $ExecutablePath
 
     foreach ($step in @(
       New-Step 'OPTION allow-external-password-cache'
       New-Step "SETKEYINFO $CacheKey"
       New-Step 'SETDESC Cache hit should ask Windows Hello first'
-    ))
-    {
+    )) {
       $response = Send-AssuanCommand -Session $session -Command $step.Command -TimeoutSeconds $TimeoutSeconds
       Assert-AssuanResponse -Response $response -Command $step.Command
     }
@@ -679,36 +600,30 @@ function Invoke-CacheHitOrFallbackScenario
     Assert-AssuanResponse -Response $response -Command 'GETPIN' -RequiredPatterns @("(?m)^D $([Regex]::Escape($ExpectedPin) )$")
 
     $text = $response.Lines -join "`n"
-    if ($text -match '(?m)^S PASSWORD_FROM_CACHE$')
-    {
+    if ($text -match '(?m)^S PASSWORD_FROM_CACHE$') {
       Write-Host '   PASS' -ForegroundColor Green
     }
-    elseif ($RequireWindowsHelloCache)
-    {
+    elseif ($RequireWindowsHelloCache) {
       throw "GETPIN returned the expected PIN but did not report PASSWORD_FROM_CACHE. Windows Hello cache hit was required. Full response: $text"
     }
-    else
-    {
+    else {
       Add-Warning 'GETPIN returned the expected PIN through a normal prompt instead of PASSWORD_FROM_CACHE. The save checkbox or Windows Hello PRF may be unavailable.'
       Write-Host '   PASS (manual fallback accepted)' -ForegroundColor Green
     }
 
     $passed = $true
   }
-  catch
-  {
+  catch {
     Add-Failure "${name}: $( $_.Exception.Message )"
   }
-  finally
-  {
+  finally {
     Stop-PinentrySession -Session $session
   }
 
   $passed
 }
 
-function Invoke-InteractivePinentryTests
-{
+function Invoke-InteractivePinentryTests {
   param([string] $ExecutablePath)
 
   Write-Step 'Interactive GETPIN, CredUI, cache, and Windows Hello coverage'
@@ -768,8 +683,7 @@ function Invoke-InteractivePinentryTests
     New-Step 'GETPIN' -TerminalPattern '^ERR 83886194\b' -Instruction "Enter '$ExpectedPin' in the first CredUI prompt and a different PIN in the second prompt. Both titles should be 'Pinentry for Windows'."
   ) -AllowUi)
 
-  if ($IncludeCancelTests)
-  {
+  if ($IncludeCancelTests) {
     [void](Invoke-AssuanScenario -Name 'GETPIN cancellation returns cancelled error' -ExecutablePath $ExecutablePath -Steps @(
       New-Step 'SETDESC Cancellation prompt'
       New-Step 'GETPIN' -TerminalPattern '^ERR 83886179\b' -Instruction 'Cancel the CredUI prompt instead of entering a PIN.'
@@ -786,51 +700,41 @@ function Invoke-InteractivePinentryTests
   ) -AllowUi)
 }
 
-function Clear-TestVaultEntries
-{
+function Clear-TestVaultEntries {
   param([string] $ExecutablePath)
 
   Write-Step 'Removing disposable WebAuthn PRF cache'
   $cleared = -not (Test-Path -LiteralPath (Join-Path $Script:TestDataDirectory 'cache\hello.cred'))
-  if (-not [string]::IsNullOrWhiteSpace($ExecutablePath))
-  {
-    try
-    {
+  if (-not [string]::IsNullOrWhiteSpace($ExecutablePath)) {
+    try {
       [void](Invoke-CheckedCommand -FilePath $ExecutablePath `
         -Arguments @('--clear-cache', $Script:TestDataDirectory) `
         -Description 'remove test cache credential and entries')
       $cleared = $true
     }
-    catch
-    {
+    catch {
       Add-Failure "Failed to remove test cache: $( $_.Exception.Message )"
       $cleared = $false
     }
   }
-  elseif (-not $cleared)
-  {
+  elseif (-not $cleared) {
     Add-Failure 'Test cache credential exists but no executable is available to revoke it; preserving test data.'
   }
 
-  if ($cleared -and (Test-Path -LiteralPath $Script:TestDataDirectory))
-  {
-    try
-    {
+  if ($cleared -and (Test-Path -LiteralPath $Script:TestDataDirectory)) {
+    try {
       Remove-Item -LiteralPath $Script:TestDataDirectory -Recurse -Force
     }
-    catch
-    {
+    catch {
       Add-Failure "Failed to remove test data directory: $( $_.Exception.Message )"
     }
   }
 }
 
-function Invoke-OptionalDialogTests
-{
+function Invoke-OptionalDialogTests {
   param([string] $ExecutablePath)
 
-  if (-not $IncludeDialogTests)
-  {
+  if (-not $IncludeDialogTests) {
     return
   }
 
@@ -848,8 +752,7 @@ function Invoke-OptionalDialogTests
   ) -AllowUi)
 }
 
-function Invoke-LiveCacheHitTest
-{
+function Invoke-LiveCacheHitTest {
   param(
     [string]    $Gpg,
     [string]    $GpgHome,
@@ -861,8 +764,7 @@ function Invoke-LiveCacheHitTest
   Write-Step 'Live gpg-agent internal cache-hit test'
   Write-Host '   gpg-agent should serve the passphrase from its internal cache — no PIN prompt expected.' -ForegroundColor Yellow
 
-  try
-  {
+  try {
     [void](Invoke-CheckedCommand `
         -FilePath $Gpg `
         -Arguments @('--homedir', $GpgHome, '--local-user', $Fingerprint, '--batch', '--yes', '--detach-sign', $MessagePath) `
@@ -871,14 +773,12 @@ function Invoke-LiveCacheHitTest
 
     Write-Host '   SIGNATURE OK — confirm visually that no prompt appeared.' -ForegroundColor Green
   }
-  catch
-  {
+  catch {
     Add-Failure "Live cache-hit test: $( $_.Exception.Message )"
   }
 }
 
-function Invoke-LiveCacheClearTest
-{
+function Invoke-LiveCacheClearTest {
   param(
     [string]    $Gpg,
     [string]    $GpgConf,
@@ -892,8 +792,7 @@ function Invoke-LiveCacheClearTest
   Write-Host "   gpg-agent will be killed to clear its internal cache." -ForegroundColor Yellow
   Write-Host "   Enter PIN '$ExpectedPin' when GPG prompts for the passphrase." -ForegroundColor Yellow
 
-  try
-  {
+  try {
     [void](Invoke-CheckedCommand `
         -FilePath $GpgConf `
         -Arguments @('--homedir', $GpgHome, '--kill', 'gpg-agent') `
@@ -908,14 +807,12 @@ function Invoke-LiveCacheClearTest
 
     Write-Host '   PASS' -ForegroundColor Green
   }
-  catch
-  {
+  catch {
     Add-Failure "Live cache-clear test: $( $_.Exception.Message )"
   }
 }
 
-function Invoke-LiveDecryptTest
-{
+function Invoke-LiveDecryptTest {
   param(
     [string]    $Gpg,
     [string]    $GpgConf,
@@ -932,8 +829,7 @@ function Invoke-LiveDecryptTest
   $decryptedPath = Join-Path $GpgHome 'decrypted.txt'
   $expectedContent = "pinentry decrypt test $Script:RunId"
 
-  try
-  {
+  try {
     Set-Content -Path $plaintextPath -Value $expectedContent -Encoding ascii
 
     [void](Invoke-CheckedCommand `
@@ -961,21 +857,18 @@ function Invoke-LiveDecryptTest
 
     Write-Host '   PASS' -ForegroundColor Green
   }
-  catch
-  {
+  catch {
     Add-Failure "Live decrypt test: $( $_.Exception.Message )"
   }
 }
 
-function Invoke-CardStatusTest
-{
+function Invoke-CardStatusTest {
   param([string] $ExecutablePath, [switch] $Sign)
 
   Write-Step 'Read-only OpenPGP smart-card status with disposable GNUPGHOME'
   $gpgCommand = Get-Command gpg -ErrorAction SilentlyContinue
   $gpgconfCommand = Get-Command gpgconf -ErrorAction SilentlyContinue
-  if ($null -eq $gpgCommand -or $null -eq $gpgconfCommand)
-  {
+  if ($null -eq $gpgCommand -or $null -eq $gpgconfCommand) {
     throw 'gpg and gpgconf are required for -CardStatusOnly.'
   }
 
@@ -986,8 +879,7 @@ function Invoke-CardStatusTest
   Set-Content -Path (Join-Path $gpgHome 'gpg-agent.conf') `
     -Value ("pinentry-program " + ($ExecutablePath -replace '\\', '/')) -Encoding ascii
 
-  try
-  {
+  try {
     $result = Invoke-CheckedCommand -FilePath $tools.Gpg `
       -Arguments @('--homedir', $gpgHome, '--batch', '--no-tty', '--card-status') `
       -Description 'query OpenPGP card status without PIN' `
@@ -1000,37 +892,41 @@ function Invoke-CardStatusTest
       Select-Object -First 1
     $fingerprint = if ($signatureLine -match ':') {
       (($signatureLine -split ':', 2)[1] -replace '\s', '').Trim()
-    } else { '' }
+    }
+    else {
+      ''
+    }
     $Script:CardSigningFingerprint = if ($fingerprint -match '^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$') {
       $fingerprint
-    } else { $null }
-    Write-Host $(if ($Script:CardSigningFingerprint) {
-        '   Card signing key: present (fingerprint withheld).'
-      } else {
-        '   Card signing key: not reported by GnuPG.'
-      }) -ForegroundColor Yellow
+    }
+    else {
+      $null
+    }
+    Write-Host $( if ($Script:CardSigningFingerprint) {
+      '   Card signing key: present (fingerprint withheld).'
+    }
+    else {
+      '   Card signing key: not reported by GnuPG.'
+    } ) -ForegroundColor Yellow
 
     $keys = Invoke-CheckedCommand -FilePath $tools.Gpg `
       -Arguments @('--homedir', $gpgHome, '--batch', '--no-tty', '--with-colons', '--list-secret-keys') `
       -Description 'check for public card-key metadata in disposable GNUPGHOME' `
       -Environment @{ GNUPGHOME = $gpgHome; PFW_DATA_DIR = $Script:TestDataDirectory }
-    Write-Host $(if ($keys.StdOut -match '(?m)^sec:') {
-        '   Card key metadata is available in the disposable GnuPG home.'
-      }
-      else {
-        '   No card key metadata is available in the disposable GnuPG home.'
-      }) -ForegroundColor Yellow
+    Write-Host $( if ($keys.StdOut -match '(?m)^sec:') {
+      '   Card key metadata is available in the disposable GnuPG home.'
+    }
+    else {
+      '   No card key metadata is available in the disposable GnuPG home.'
+    } ) -ForegroundColor Yellow
   }
-  catch
-  {
+  catch {
     Add-Failure 'Read-only OpenPGP card status failed; no PIN or key operation was attempted.'
     return
   }
 
-  if ($Sign)
-  {
-    try
-    {
+  if ($Sign) {
+    try {
       Assert-True (-not [string]::IsNullOrWhiteSpace($Script:CardSigningFingerprint)) `
         'The card has no reported signing key.'
       $public = Invoke-CheckedCommand -FilePath $gpgCommand.Source `
@@ -1060,7 +956,7 @@ function Invoke-CardStatusTest
       Write-Host '   ACTION: If Windows Security asks for the card PIN, enter it. Do not expect Remember.' -ForegroundColor Yellow
       [void](Invoke-CheckedCommand -FilePath $tools.Gpg `
           -Arguments @('--homedir', $gpgHome, '--batch', '--yes', '--local-user',
-            $Script:CardSigningFingerprint, '--output', $signature, '--detach-sign', $message) `
+      $Script:CardSigningFingerprint, '--output', $signature, '--detach-sign', $message) `
           -Description 'sign disposable data with existing card key' -Environment $envVars)
       Assert-True ((Test-Path -LiteralPath $signature) -and (Get-Item -LiteralPath $signature).Length -gt 0) `
         'GnuPG did not create a detached signature.'
@@ -1068,19 +964,16 @@ function Invoke-CardStatusTest
         'A card PIN created a persistent cache credential.'
       Write-Host '   PASS: card signature created without a persistent PFW cache credential.' -ForegroundColor Green
     }
-    catch
-    {
+    catch {
       Add-Failure 'Card signing did not complete in disposable GNUPGHOME; no key was created or modified.'
     }
   }
 }
 
-function Invoke-OptionalGpgKeyTests
-{
+function Invoke-OptionalGpgKeyTests {
   param([string] $ExecutablePath)
 
-  if (-not $IncludeGpgKeyTests -and -not $GpgCacheHitOnly)
-  {
+  if (-not $IncludeGpgKeyTests -and -not $GpgCacheHitOnly) {
     return
   }
 
@@ -1088,8 +981,7 @@ function Invoke-OptionalGpgKeyTests
 
   $gpgCommand = Get-Command gpg -ErrorAction SilentlyContinue
   $gpgconfCommand = Get-Command gpgconf -ErrorAction SilentlyContinue
-  if ($null -eq $gpgCommand -or $null -eq $gpgconfCommand)
-  {
+  if ($null -eq $gpgCommand -or $null -eq $gpgconfCommand) {
     throw 'gpg and gpgconf are required for -IncludeGpgKeyTests.'
   }
 
@@ -1103,12 +995,10 @@ function Invoke-OptionalGpgKeyTests
   $Script:CreatedGpgHome = $gpgHome
 
   $escapedPinentry = $ExecutablePath -replace '\\', '/'
-  $cacheTtl = if ($IncludeCacheTests -or $GpgCacheHitOnly)
-  {
+  $cacheTtl = if ($IncludeCacheTests -or $GpgCacheHitOnly) {
     300
   }
-  else
-  {
+  else {
     1
   }
   Set-Content -Path (Join-Path $gpgHome 'gpg-agent.conf') -Value @(
@@ -1131,8 +1021,7 @@ function Invoke-OptionalGpgKeyTests
     -Environment $envVars
 
   $socketDirLine = ($dirs.StdOut -split "`r?`n") | Where-Object { $_ -like 'socketdir:*' } | Select-Object -First 1
-  if ($socketDirLine)
-  {
+  if ($socketDirLine) {
     Write-Host "GPG socket directory: $socketDirLine" -ForegroundColor Yellow
     Assert-True ($socketDirLine.Length -lt 80) "GPG socket directory is still too long after short-path setup: $socketDirLine"
   }
@@ -1156,13 +1045,10 @@ function Invoke-OptionalGpgKeyTests
     -Description 'gpg list generated secret keys' `
     -Environment $envVars
 
-  foreach ($line in ($list.StdOut -split "`r?`n"))
-  {
-    if ( $line.StartsWith('fpr:'))
-    {
+  foreach ($line in ($list.StdOut -split "`r?`n")) {
+    if ( $line.StartsWith('fpr:')) {
       $parts = $line.Split(':')
-      if ($parts.Length -gt 9 -and -not [string]::IsNullOrWhiteSpace($parts[9]))
-      {
+      if ($parts.Length -gt 9 -and -not [string]::IsNullOrWhiteSpace($parts[9])) {
         [void] $Script:CreatedGpgFingerprints.Add($parts[9])
       }
     }
@@ -1170,8 +1056,7 @@ function Invoke-OptionalGpgKeyTests
 
   Assert-True ($Script:CreatedGpgFingerprints.Count -gt 0) 'GPG key was generated but no fingerprint was found for cleanup.'
 
-  if ($IncludeDecryptTest)
-  {
+  if ($IncludeDecryptTest) {
     [void](Invoke-CheckedCommand `
         -FilePath $gpg `
         -Arguments @('--homedir', $gpgHome, '--batch', '--pinentry-mode', 'loopback',
@@ -1190,8 +1075,7 @@ function Invoke-OptionalGpgKeyTests
       -Description 'clear key-generation loopback passphrase before live prompt' `
       -Environment $envVars)
 
-  if ($ProvisionGpgOnly)
-  {
+  if ($ProvisionGpgOnly) {
     Write-Host '   Disposable GPG key provisioned; cleanup follows without an interactive prompt.' -ForegroundColor Green
     return
   }
@@ -1203,10 +1087,8 @@ function Invoke-OptionalGpgKeyTests
       -Description 'gpg detach-sign smoke test (PIN prompt expected)' `
       -Environment $envVars)
 
-  if ($IncludeCacheTests -or $GpgCacheHitOnly)
-  {
-    if ($GpgCacheHitOnly)
-    {
+  if ($IncludeCacheTests -or $GpgCacheHitOnly) {
+    if ($GpgCacheHitOnly) {
       Write-Host '   First signature completed. The repeat begins in 5 seconds; watch for ANY new window.' -ForegroundColor Yellow
       Start-Sleep -Seconds 5
     }
@@ -1215,23 +1097,20 @@ function Invoke-OptionalGpgKeyTests
       -MessagePath $messagePath -Fingerprint $Script:CreatedGpgFingerprints[0]
   }
 
-  if ($IncludeCacheTests)
-  {
+  if ($IncludeCacheTests) {
     Invoke-LiveCacheClearTest `
       -Gpg $gpg -GpgConf $gpgconf -GpgHome $gpgHome -EnvVars $envVars `
       -MessagePath $messagePath -Fingerprint $Script:CreatedGpgFingerprints[0]
   }
 
-  if ($IncludeDecryptTest)
-  {
+  if ($IncludeDecryptTest) {
     Invoke-LiveDecryptTest `
       -Gpg $gpg -GpgConf $gpgconf -GpgHome $gpgHome -EnvVars $envVars `
       -Fingerprint $Script:CreatedGpgFingerprints[0]
   }
 }
 
-function New-ShortGpgToolPaths
-{
+function New-ShortGpgToolPaths {
   param(
     [string] $GpgPath,
     [string] $GpgConfPath
@@ -1242,8 +1121,7 @@ function New-ShortGpgToolPaths
   $linkRoot = New-ShortTemporaryDirectory -Name "pfwgr$Script:RunId"
   Remove-Item -LiteralPath $linkRoot -Force
 
-  try
-  {
+  try {
     New-Item -ItemType Junction -Path $linkRoot -Target $gpgRoot -Force | Out-Null
     $Script:CreatedGpgRootLink = $linkRoot
 
@@ -1252,8 +1130,7 @@ function New-ShortGpgToolPaths
       GpgConf = Join-Path $linkRoot 'bin\gpgconf.exe'
     }
   }
-  catch
-  {
+  catch {
     Write-Host "   WARN: failed to create short GnuPG junction '$linkRoot': $( $_.Exception.Message )" -ForegroundColor Yellow
     Write-Host '   WARN: falling back to PATH GnuPG; Scoop portable installs may fail with socket path length errors.' -ForegroundColor Yellow
 
@@ -1264,10 +1141,8 @@ function New-ShortGpgToolPaths
   }
 }
 
-function Initialize-ShortTemporaryRoot
-{
-  if (-not [string]::IsNullOrWhiteSpace($Script:ShortTempRoot))
-  {
+function Initialize-ShortTemporaryRoot {
+  if (-not [string]::IsNullOrWhiteSpace($Script:ShortTempRoot)) {
     return
   }
 
@@ -1275,24 +1150,20 @@ function Initialize-ShortTemporaryRoot
   New-Item -ItemType Directory -Path $backingDir -Force | Out-Null
   $Script:CreatedSubstBackingDir = $backingDir
 
-  foreach ($letter in 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z')
-  {
+  foreach ($letter in 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z') {
     $drive = "${letter}:"
-    if (Test-Path $drive)
-    {
+    if (Test-Path $drive) {
       continue
     }
 
     $substResult = & subst.exe $drive $backingDir 2>&1
-    if ($LASTEXITCODE -eq 0 -and (Test-Path $drive))
-    {
+    if ($LASTEXITCODE -eq 0 -and (Test-Path $drive)) {
       $Script:CreatedSubstDrive = $drive
       $Script:ShortTempRoot = "$drive\"
       return
     }
 
-    if ($substResult)
-    {
+    if ($substResult) {
       Write-Host "   WARN: subst $drive failed: $substResult" -ForegroundColor Yellow
     }
   }
@@ -1301,20 +1172,16 @@ function Initialize-ShortTemporaryRoot
   $Script:ShortTempRoot = Join-Path $Script:RepoRoot 'artifacts'
 }
 
-function New-ShortTemporaryDirectory
-{
+function New-ShortTemporaryDirectory {
   param([string] $Name)
 
   $roots = @($Script:ShortTempRoot) |
     Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
     Select-Object -Unique
 
-  foreach ($root in $roots)
-  {
-    try
-    {
-      if (-not (Test-Path $root))
-      {
+  foreach ($root in $roots) {
+    try {
+      if (-not (Test-Path $root)) {
         New-Item -ItemType Directory -Path $root -Force | Out-Null
       }
 
@@ -1322,181 +1189,143 @@ function New-ShortTemporaryDirectory
       New-Item -ItemType Directory -Path $path -Force | Out-Null
       return (Resolve-Path $path).Path
     }
-    catch
-    {
+    catch {
     }
   }
 
   throw 'Unable to create a short temporary directory for the GPG smoke test.'
 }
 
-function Remove-OptionalGpgKeys
-{
-  if (-not [string]::IsNullOrWhiteSpace($Script:CreatedGpgHome))
-  {
+function Remove-OptionalGpgKeys {
+  if (-not [string]::IsNullOrWhiteSpace($Script:CreatedGpgHome)) {
     Write-Step 'Cleaning temporary GPG keys and home'
 
     $gpgCommand = Get-Command gpg -ErrorAction SilentlyContinue
     $gpgconfCommand = Get-Command gpgconf -ErrorAction SilentlyContinue
-    $gpg = if ($null -ne $gpgCommand)
-    {
+    $gpg = if ($null -ne $gpgCommand) {
       $gpgCommand.Source
     }
-    else
-    {
+    else {
       $null
     }
-    $gpgconf = if ($null -ne $gpgconfCommand)
-    {
+    $gpgconf = if ($null -ne $gpgconfCommand) {
       $gpgconfCommand.Source
     }
-    else
-    {
+    else {
       $null
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($Script:CreatedGpgRootLink))
-    {
+    if (-not [string]::IsNullOrWhiteSpace($Script:CreatedGpgRootLink)) {
       $linkedGpg = Join-Path $Script:CreatedGpgRootLink 'bin\gpg.exe'
       $linkedGpgConf = Join-Path $Script:CreatedGpgRootLink 'bin\gpgconf.exe'
 
-      if (Test-Path $linkedGpg)
-      {
+      if (Test-Path $linkedGpg) {
         $gpg = $linkedGpg
       }
 
-      if (Test-Path $linkedGpgConf)
-      {
+      if (Test-Path $linkedGpgConf) {
         $gpgconf = $linkedGpgConf
       }
     }
 
     $envVars = @{ GNUPGHOME = $Script:CreatedGpgHome }
 
-    if (-not [string]::IsNullOrWhiteSpace($gpg))
-    {
-      foreach ($fingerprint in ($Script:CreatedGpgFingerprints | Select-Object -Unique))
-      {
-        try
-        {
+    if (-not [string]::IsNullOrWhiteSpace($gpg)) {
+      foreach ($fingerprint in ($Script:CreatedGpgFingerprints | Select-Object -Unique)) {
+        try {
           [void](Invoke-CheckedCommand `
             -FilePath $gpg `
             -Arguments @('--homedir', $Script:CreatedGpgHome, '--batch', '--yes', '--delete-secret-and-public-key', $fingerprint) `
             -Description "delete temporary GPG key $fingerprint" `
             -Environment $envVars)
         }
-        catch
-        {
+        catch {
           Add-Failure "Failed to delete temporary GPG key ${fingerprint}: $( $_.Exception.Message )"
         }
       }
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($gpgconf))
-    {
-      try
-      {
+    if (-not [string]::IsNullOrWhiteSpace($gpgconf)) {
+      try {
         [void](Invoke-CheckedCommand `
           -FilePath $gpgconf `
           -Arguments @('--homedir', $Script:CreatedGpgHome, '--kill', 'gpg-agent') `
           -Description 'kill temporary gpg-agent' `
           -Environment $envVars)
       }
-      catch
-      {
+      catch {
         Write-Host "   WARN: failed to kill temporary gpg-agent: $( $_.Exception.Message )" -ForegroundColor Yellow
       }
     }
 
-    try
-    {
+    try {
       Remove-Item -LiteralPath $Script:CreatedGpgHome -Recurse -Force
     }
-    catch
-    {
+    catch {
       Add-Failure "Failed to remove temporary GNUPGHOME '$Script:CreatedGpgHome': $( $_.Exception.Message )"
     }
   }
 
   if (-not [string]::IsNullOrWhiteSpace($Script:CreatedGpgRootLink) -and
-    (Test-Path $Script:CreatedGpgRootLink))
-  {
-    try
-    {
+    (Test-Path $Script:CreatedGpgRootLink)) {
+    try {
       Remove-Item -LiteralPath $Script:CreatedGpgRootLink -Force
     }
-    catch
-    {
+    catch {
       Add-Failure "Failed to remove temporary GnuPG junction '$Script:CreatedGpgRootLink': $( $_.Exception.Message )"
     }
   }
 
-  if (-not [string]::IsNullOrWhiteSpace($Script:CreatedSubstDrive))
-  {
-    try
-    {
+  if (-not [string]::IsNullOrWhiteSpace($Script:CreatedSubstDrive)) {
+    try {
       & subst.exe $Script:CreatedSubstDrive /D | Out-Null
-      if ($LASTEXITCODE -ne 0)
-      {
+      if ($LASTEXITCODE -ne 0) {
         throw "subst.exe returned exit code $LASTEXITCODE."
       }
     }
-    catch
-    {
+    catch {
       Add-Failure "Failed to remove temporary subst drive '$Script:CreatedSubstDrive': $( $_.Exception.Message )"
     }
   }
 
   if (-not [string]::IsNullOrWhiteSpace($Script:CreatedSubstBackingDir) -and
-    (Test-Path $Script:CreatedSubstBackingDir))
-  {
-    try
-    {
-      if (@(Get-ChildItem -LiteralPath $Script:CreatedSubstBackingDir -Force).Count -eq 0)
-      {
+    (Test-Path $Script:CreatedSubstBackingDir)) {
+    try {
+      if (@(Get-ChildItem -LiteralPath $Script:CreatedSubstBackingDir -Force).Count -eq 0) {
         Remove-Item -LiteralPath $Script:CreatedSubstBackingDir -Force
       }
-      else
-      {
+      else {
         Add-Warning 'Temporary subst backing directory was not empty and was preserved for review.'
       }
     }
-    catch
-    {
+    catch {
       Add-Failure "Failed to remove temporary subst backing directory '$Script:CreatedSubstBackingDir': $( $_.Exception.Message )"
     }
   }
 }
 
-try
-{
+try {
   if (($CardStatusOnly -or $CardSignOnly) -and ($Interactive -or $RequireWindowsHelloCache -or $IncludeDialogTests -or
-      $IncludeCancelTests -or $IncludeGpgKeyTests -or $ProvisionGpgOnly -or $IncludeDecryptTest -or
-      $IncludeCacheTests -or $GpgCacheHitOnly -or ($CardStatusOnly -and $CardSignOnly)))
-  {
+    $IncludeCancelTests -or $IncludeGpgKeyTests -or $ProvisionGpgOnly -or $IncludeDecryptTest -or
+    $IncludeCacheTests -or $GpgCacheHitOnly -or ($CardStatusOnly -and $CardSignOnly))) {
     throw 'Card status/signing mode must run alone (apart from build and timeout options).'
   }
 
   if ($GpgCacheHitOnly -and ($Interactive -or $RequireWindowsHelloCache -or
     $IncludeDialogTests -or $IncludeCancelTests -or $IncludeGpgKeyTests -or
-    $ProvisionGpgOnly -or $IncludeDecryptTest -or $IncludeCacheTests))
-  {
+    $ProvisionGpgOnly -or $IncludeDecryptTest -or $IncludeCacheTests)) {
     throw '-GpgCacheHitOnly must run alone (apart from build and timeout options).'
   }
-  if ($ProvisionGpgOnly -and -not $IncludeGpgKeyTests)
-  {
+  if ($ProvisionGpgOnly -and -not $IncludeGpgKeyTests) {
     throw '-ProvisionGpgOnly requires -IncludeGpgKeyTests.'
   }
-  if (($IncludeCacheTests -or $IncludeDecryptTest) -and -not $IncludeGpgKeyTests)
-  {
+  if (($IncludeCacheTests -or $IncludeDecryptTest) -and -not $IncludeGpgKeyTests) {
     throw '-IncludeCacheTests and -IncludeDecryptTest require -IncludeGpgKeyTests.'
   }
-  if ($ProvisionGpgOnly -and ($IncludeCacheTests -or $IncludeDecryptTest))
-  {
+  if ($ProvisionGpgOnly -and ($IncludeCacheTests -or $IncludeDecryptTest)) {
     throw '-ProvisionGpgOnly cannot be combined with live cache or decrypt scenarios.'
   }
-  if (($RequireWindowsHelloCache -or $IncludeCancelTests) -and -not $Interactive)
-  {
+  if (($RequireWindowsHelloCache -or $IncludeCancelTests) -and -not $Interactive) {
     throw '-RequireWindowsHelloCache and -IncludeCancelTests require -Interactive.'
   }
 
@@ -1505,20 +1334,16 @@ try
   $pinentryExe = Get-PinentryExecutable
   Write-Step "Using $pinentryExe"
 
-  if ($CardStatusOnly -or $CardSignOnly)
-  {
+  if ($CardStatusOnly -or $CardSignOnly) {
     Invoke-CardStatusTest -ExecutablePath $pinentryExe -Sign:$CardSignOnly
   }
-  elseif (-not $GpgCacheHitOnly)
-  {
+  elseif (-not $GpgCacheHitOnly) {
     Invoke-ProtocolAndOptionTests -ExecutablePath $pinentryExe
 
-    if ($Interactive)
-    {
+    if ($Interactive) {
       Invoke-InteractivePinentryTests -ExecutablePath $pinentryExe
     }
-    else
-    {
+    else {
       Write-Step 'Skipping interactive GETPIN/CredUI/Windows Hello scenarios'
       Write-Host 'Run again with -Interactive to cover prompts, cache hits, Windows Hello, repeat success, and repeat mismatch.' -ForegroundColor Yellow
     }
@@ -1528,41 +1353,32 @@ try
 
   Invoke-OptionalGpgKeyTests -ExecutablePath $pinentryExe
 }
-finally
-{
-  try
-  {
-    Clear-TestVaultEntries -ExecutablePath $( if (Test-Path variable:pinentryExe)
-    {
+finally {
+  try {
+    Clear-TestVaultEntries -ExecutablePath $( if (Test-Path variable:pinentryExe) {
       $pinentryExe
     }
-    else
-    {
+    else {
       $null
     } )
   }
-  finally
-  {
+  finally {
     Remove-OptionalGpgKeys
   }
 }
 
-if ($Script:Warnings.Count -gt 0)
-{
+if ($Script:Warnings.Count -gt 0) {
   Write-Host ""
   Write-Host 'Test warnings:' -ForegroundColor Yellow
-  foreach ($warning in $Script:Warnings)
-  {
+  foreach ($warning in $Script:Warnings) {
     Write-Host " - $warning" -ForegroundColor Yellow
   }
 }
 
-if ($Script:Failures.Count -gt 0)
-{
+if ($Script:Failures.Count -gt 0) {
   Write-Host ""
   Write-Host 'Test failures:' -ForegroundColor Red
-  foreach ($failure in $Script:Failures)
-  {
+  foreach ($failure in $Script:Failures) {
     Write-Host " - $failure" -ForegroundColor Red
   }
 
@@ -1570,11 +1386,9 @@ if ($Script:Failures.Count -gt 0)
 }
 
 Write-Host ""
-if ($Script:Warnings.Count -gt 0)
-{
+if ($Script:Warnings.Count -gt 0) {
   Write-Host 'All requested PinentryForWindows tests completed successfully with warnings.' -ForegroundColor Green
 }
-else
-{
+else {
   Write-Host 'All requested PinentryForWindows tests completed successfully.' -ForegroundColor Green
 }
