@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.IO.Pipes;
+using PinentryForWindows.Core.Contracts;
 using PinentryForWindows.Diagnostics;
 
 namespace PinentryForWindows.Ui;
@@ -26,9 +27,16 @@ internal static class UiHelper {
 
       return 0;
     }
-    catch (Exception) {
+    catch (Exception error) {
       VerboseLog.Write(VerboseEvent.HelperFailed);
-      try { await UiWire.WriteErrorAsync(responses, CancellationToken.None); }
+      try {
+        if (error is SecretTooLongException) {
+          await UiWire.WriteTooLongAsync(responses, CancellationToken.None);
+        }
+        else {
+          await UiWire.WriteErrorAsync(responses, CancellationToken.None);
+        }
+      }
       catch (Exception) {
         /* The parent has already closed the private pipe. */
       }

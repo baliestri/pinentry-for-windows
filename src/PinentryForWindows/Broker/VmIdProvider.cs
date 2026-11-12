@@ -41,7 +41,10 @@ internal static class VmIdProvider {
       start.ArgumentList.Add(argument);
     }
 
-    using var process = Process.Start(start);
+    Process? started;
+    lock (ChildProcessGate.Sync) { started = Process.Start(start); }
+
+    using var process = started;
     if (process is null) {
       return null;
     }

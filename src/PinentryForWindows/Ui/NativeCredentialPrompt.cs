@@ -112,6 +112,11 @@ internal static unsafe partial class NativeCredentialPrompt {
 
       var end = Array.IndexOf(password, '\0');
       var chars = password.AsSpan(0, end < 0 ? password.Length : end);
+      // CredUI accepts more UTF-16 text than the secret limit holds once encoded as UTF-8.
+      if (Encoding.UTF8.GetByteCount(chars) > bytes.Length) {
+        throw new SecretTooLongException();
+      }
+
       var length = Encoding.UTF8.GetBytes(chars, bytes);
       transferred = true;
       return new CapturedSecret(bytes, length, remember);

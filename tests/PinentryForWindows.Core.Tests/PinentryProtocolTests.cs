@@ -118,6 +118,13 @@ public sealed class PinentryProtocolTests {
   }
 
   [Fact]
+  public async Task Oversized_passphrase_returns_too_large_error() {
+    var ui = new FakeUi("not-used", false) { SecretTooLong = true };
+    var output = await RunAsync("GETPIN\nBYE\n", ui, new FakeCache());
+    Assert.Contains("ERR 83886147", output);
+  }
+
+  [Fact]
   public async Task Confirmation_cancel_and_one_button_message_keep_distinct_semantics() {
     var ui = new FakeUi("unused", false) { ConfirmAnswer = false };
     var output = await RunAsync("CONFIRM\nCONFIRM --one-button\nMESSAGE Information\nBYE\n", ui, new FakeCache());
@@ -344,6 +351,7 @@ public sealed class PinentryProtocolTests {
     public string? LastDialogTitle { get; private set; }
     public long LastGetPinTimestamp { get; private set; }
     public bool ShouldTimeOut { get; init; }
+    public bool SecretTooLong { get; init; }
     public bool ConfirmAnswer { get; init; } = true;
     public int ConfirmCount { get; private set; }
     public int MessageCount { get; private set; }
@@ -359,6 +367,10 @@ public sealed class PinentryProtocolTests {
 
       if (ShouldTimeOut) {
         throw new TimeoutException();
+      }
+
+      if (SecretTooLong) {
+        throw new SecretTooLongException();
       }
 
       if (WaitBeforePrompt is not null) {

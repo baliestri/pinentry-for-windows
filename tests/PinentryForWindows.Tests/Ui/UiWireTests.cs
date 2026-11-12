@@ -39,6 +39,15 @@ public sealed class UiWireTests {
   }
 
   [Fact]
+  public async Task Oversized_passphrase_is_reported_as_too_long_instead_of_a_helper_failure() {
+    using var stream = new MemoryStream();
+    await UiWire.WriteTooLongAsync(stream, CancellationToken.None);
+    stream.Position = 0;
+    await Assert.ThrowsAsync<SecretTooLongException>(async () =>
+      await UiWire.ReadResultAsync(stream, CancellationToken.None));
+  }
+
+  [Fact]
   public async Task Prompt_description_is_bounded_before_launching_ui() {
     using var stream = new MemoryStream();
     var request = new PromptRequest("Title", new string('X', 5000), "User", "Password:", false, 0);

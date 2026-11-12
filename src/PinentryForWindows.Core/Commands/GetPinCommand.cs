@@ -105,5 +105,6 @@ internal sealed class GetPinCommand : ICommandHandler<PinentrySessionState> {
   CancellationToken ct) {
     try { return await ui.PromptAsync(request, ct); }
     catch (TimeoutException) { throw HandlerException.Remote(83886142, "timeout"); }
+    catch (SecretTooLongException) { throw HandlerException.Remote(83886147, "passphrase too long"); }
   }
 }

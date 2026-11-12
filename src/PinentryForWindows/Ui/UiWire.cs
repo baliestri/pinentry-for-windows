@@ -88,6 +88,9 @@ internal static class UiWire {
   public static ValueTask WriteErrorAsync(Stream stream, CancellationToken ct)
     => WriteResponseAsync(stream, 2, ReadOnlyMemory<byte>.Empty, false, ct);
 
+  public static ValueTask WriteTooLongAsync(Stream stream, CancellationToken ct)
+    => WriteResponseAsync(stream, 3, ReadOnlyMemory<byte>.Empty, false, ct);
+
   public static ValueTask WriteResultAsync(Stream stream, ReadOnlyMemory<byte> secret, bool remember,
   CancellationToken ct)
     => WriteResponseAsync(stream, 1, secret, remember, ct);
@@ -113,6 +116,11 @@ internal static class UiWire {
     if (header[4] == 2 &&
         length == 0) {
       throw new InvalidDataException("UI worker failed.");
+    }
+
+    if (header[4] == 3 &&
+        length == 0) {
+      throw new SecretTooLongException();
     }
 
     if (header[4] != 1) {
