@@ -39,7 +39,7 @@ jobs:
       ARCH: ${{ matrix.arch }}
     steps:
       - name: Checkout candidate
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.source_ref }}
           fetch-depth: 0
@@ -54,7 +54,7 @@ jobs:
         run: bash tools/prepare-release-build.sh "$RELEASE_TAG" "$CANDIDATE_SHA" >> "$GITHUB_ENV"
 
       - name: Install .NET 10
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: 10.0.x
 
@@ -67,7 +67,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-          dotnet test PinentryForWindows.slnx -c Release
+          dotnet test --solution PinentryForWindows.slnx -c Release
           pwsh -NoProfile -File tests/Test-InstallerConfig.ps1
           pwsh -NoProfile -NonInteractive -File tests/Test-BridgeSetup.ps1
 
@@ -141,7 +141,7 @@ jobs:
 
       - name: Upload ${{ matrix.runtime }} release binary
         if: inputs.upload_assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pinentry-windows-${{ matrix.arch }}
           path: ${{ runner.temp }}/artifacts/pfw.${{ matrix.arch }}.exe
@@ -165,7 +165,7 @@ jobs:
       ARCH: ${{ matrix.arch }}
     steps:
       - name: Checkout candidate
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.source_ref }}
           fetch-depth: 0
@@ -180,7 +180,7 @@ jobs:
         run: bash tools/prepare-release-build.sh "$RELEASE_TAG" "$CANDIDATE_SHA" >> "$GITHUB_ENV"
 
       - name: Install .NET 10
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: 10.0.x
 
@@ -194,8 +194,8 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts
           bash tests/Test-ReleaseVersion.sh
-          dotnet test tests/PinentryForWindows.Core.Tests/PinentryForWindows.Core.Tests.csproj -c Release
-          dotnet test tests/PinentryForWindows.Relay.Tests/PinentryForWindows.Relay.Tests.csproj -c Release
+          dotnet test --project tests/PinentryForWindows.Core.Tests/PinentryForWindows.Core.Tests.csproj -c Release
+          dotnet test --project tests/PinentryForWindows.Relay.Tests/PinentryForWindows.Relay.Tests.csproj -c Release
           bash tests/Test-InstallerWsl.sh
 
       - name: Publish ${{ matrix.runtime }} Native AOT
@@ -229,7 +229,7 @@ jobs:
 
       - name: Upload ${{ matrix.runtime }} release binary
         if: inputs.upload_assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pinentry-relay-${{ matrix.arch }}
           path: ${{ runner.temp }}/artifacts/pfw-relay-${{ matrix.arch }}
