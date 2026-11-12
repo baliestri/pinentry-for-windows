@@ -83,6 +83,34 @@ public sealed class PinentryProtocolTests {
   }
 
   [Fact]
+  public async Task Error_after_a_cache_hit_removes_the_rejected_entry() {
+    var cache = new FakeCache();
+    cache.Seed("windows", GRIP, "stale");
+    cache.Seed("wsl:archlinux", GRIP, "other-origin");
+    var ui = new FakeUi("corrected", false);
+    var output = await RunAsync($"OPTION allow-external-password-cache\nSETKEYINFO n/{GRIP}\nGETPIN\n" +
+                                "SETERROR Bad%20Passphrase\nGETPIN\nGETPIN\nBYE\n", ui, cache);
+
+    Assert.Contains("S PASSWORD_FROM_CACHE\nD stale\nOK\nOK\nD corrected\nOK\nD corrected\nOK", output);
+    Assert.Equal(2, ui.PromptCount);
+    Assert.False(cache.Contains("windows", GRIP));
+    Assert.True(cache.Contains("wsl:archlinux", GRIP));
+  }
+
+  [Fact]
+  public async Task Error_after_typed_input_keeps_the_cached_entry() {
+    var cache = new FakeCache();
+    var ui = new FakeUi("typed", false);
+    var output = await RunAsync($"OPTION allow-external-password-cache\nSETKEYINFO n/{GRIP}\nGETPIN\n" +
+                                "SETERROR Bad%20Passphrase\nGETPIN\nBYE\n", ui, cache,
+      beforeSecondPrompt: () => cache.Seed("windows", GRIP, "valid"));
+
+    Assert.DoesNotContain("S PASSWORD_FROM_CACHE", output);
+    Assert.Equal(2, ui.PromptCount);
+    Assert.True(cache.Contains("windows", GRIP));
+  }
+
+  [Fact]
   public async Task Timed_out_ui_returns_pinentry_timeout_error() {
     var ui = new FakeUi("not-used", false) { ShouldTimeOut = true };
     var output = await RunAsync("SETTIMEOUT 1\nGETPIN\nBYE\n", ui, new FakeCache());
@@ -294,7 +322,9 @@ public sealed class PinentryProtocolTests {
     Assert.Contains("ERR 67109144", output);
   }
 
-  private static async Task<string> RunAsync(string commands, FakeUi ui, FakeCache cache, string origin = "windows") {
+  private static async Task<string> RunAsync(string commands, FakeUi ui, FakeCache cache, string origin = "windows",
+  Action? beforeSecondPrompt = null) {
+    ui.BeforeSecondPrompt = beforeSecondPrompt;
     return await RunAsync(Encoding.UTF8.GetBytes(commands), ui, cache, origin);
   }
 
@@ -319,9 +349,14 @@ public sealed class PinentryProtocolTests {
     public int MessageCount { get; private set; }
     public Queue<string>? Passwords { get; init; }
     public Func<Task>? WaitBeforePrompt { get; init; }
+    public Action? BeforeSecondPrompt { get; set; }
 
     public async ValueTask<PasswordPromptResult?> PromptAsync(PromptRequest request, CancellationToken ct) {
       PromptCount++;
+      if (PromptCount == 2) {
+        BeforeSecondPrompt?.Invoke();
+      }
+
       if (ShouldTimeOut) {
         throw new TimeoutException();
       }
@@ -382,6 +417,8 @@ public sealed class PinentryProtocolTests {
     }
 
     public void Seed(string origin, string key, string value) => _entries[(origin, key)] = value;
+
+    public bool Contains(string origin, string key) => _entries.ContainsKey((origin, key));
   }
 
   private sealed class ScriptedStream(byte[] input) : Stream {

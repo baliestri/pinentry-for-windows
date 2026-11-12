@@ -13,15 +13,16 @@ internal static class PinentryCli {
 
     if (args.Length is 1 or 2 &&
         args[0] == "--clear-cache") {
+      var credentialRemoved = true;
       if (args.Length == 1) {
-        await PinentryPaths.CreateCache().ClearAllAsync(ct);
+        credentialRemoved = await PinentryPaths.CreateCache().ClearAllAsync(ct);
       }
       else if (TryGrip(args[1], out var grip)) {
         await PinentryPaths.CreateCache().RemoveAsync("windows", grip, ct);
       }
       else if (LooksLikeDirectory(args[1])) {
-        await new WindowsPrfCache(Path.Combine(Path.GetFullPath(args[1]), "cache"), new NativeWebAuthnPrf())
-          .ClearAllAsync(ct);
+        credentialRemoved = await new WindowsPrfCache(Path.Combine(Path.GetFullPath(args[1]), "cache"),
+          new NativeWebAuthnPrf()).ClearAllAsync(ct);
       }
       else {
         Console.WriteLine("No cache entry found for the specified key.");
@@ -29,6 +30,11 @@ internal static class PinentryCli {
       }
 
       Console.WriteLine("Pinentry cache cleared (if present).");
+      if (!credentialRemoved) {
+        Console.WriteLine("The Windows Hello passkey could not be removed; if \"Pinentry for Windows\" is still " +
+                          "listed under Settings > Accounts > Passkeys, delete it there.");
+      }
+
       return 0;
     }
 

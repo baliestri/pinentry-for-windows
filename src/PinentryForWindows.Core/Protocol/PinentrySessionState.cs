@@ -33,6 +33,10 @@ public sealed partial class PinentrySessionState(string origin,
   public string RepeatError { get; set; } = string.Empty;
   public string CacheUser { get; set; } = string.Empty;
   public string? KeyGrip { get; private set; }
+
+  /// <summary>Key whose passphrase the previous GETPIN of this session answered from the cache.</summary>
+  public string? LastCachedGrip { get; set; }
+
   public bool CardOrToken => _cardDescription || _keyInfoCleared;
   public bool AllowExternalCache { get; set; }
   public bool Repeat { get; set; }
@@ -81,6 +85,7 @@ public sealed partial class PinentrySessionState(string origin,
     RepeatError = "Passphrases do not match. Please try again.";
     CacheUser = string.Empty;
     KeyGrip = null;
+    LastCachedGrip = null;
     _cardDescription = false;
     _keyInfoCleared = false;
     AllowExternalCache = false;

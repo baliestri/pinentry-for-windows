@@ -20,6 +20,8 @@ internal sealed class GetPinCommand : ICommandHandler<PinentrySessionState> {
     var state = context.State;
     var error = state.Error;
     state.Error = string.Empty;
+    var rejectedGrip = state.LastCachedGrip;
+    state.LastCachedGrip = null;
 
     if (state.CacheEligible &&
         error.Length == 0) {
@@ -35,7 +37,19 @@ internal sealed class GetPinCommand : ICommandHandler<PinentrySessionState> {
           await SendSecretAsync(context, cached, ct);
         }
 
+        state.LastCachedGrip = state.KeyGrip;
         return;
+      }
+    }
+
+    if (error.Length != 0 &&
+        rejectedGrip is not null &&
+        rejectedGrip == state.KeyGrip) {
+      // The agent rejected the passphrase this session just served from the cache, so the entry is stale.
+      // An error after typed input proves nothing about the entry and must leave it alone.
+      try { await state.Cache.RemoveAsync(state.Origin, rejectedGrip, ct); }
+      catch (Exception) when (!ct.IsCancellationRequested) {
+        /* A stale entry that cannot be removed is still skipped for this request. */
       }
     }
 

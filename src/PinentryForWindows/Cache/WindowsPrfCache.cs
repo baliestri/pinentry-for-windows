@@ -178,15 +178,25 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
     }
   }
 
-  public async Task ClearAllAsync(CancellationToken ct) {
+  /// <summary>
+  ///   Removes every local cache file. Returns <see langword="false" /> when the Windows Hello credential
+  ///   could not be deleted, which leaves an unusable passkey for the user to remove from Windows settings.
+  /// </summary>
+  public async Task<bool> ClearAllAsync(CancellationToken ct) {
     if (!Directory.Exists(directory)) {
-      return;
+      return true;
     }
 
     await using var admission = await LockAsync(ct);
+    var credentialRemoved = true;
     if (File.Exists(CredentialPath)) {
-      var id = ReadCredentialId();
-      await provider.DeleteCredentialAsync(id, ct);
+      // A missing passkey or a damaged record must never keep the local files in place:
+      // without the credential the entries are undecryptable and only block new ones.
+      try { await provider.DeleteCredentialAsync(ReadCredentialId(), ct); }
+      catch (Exception) when (!ct.IsCancellationRequested) {
+        credentialRemoved = false;
+      }
+
       File.Delete(CredentialPath);
     }
 
@@ -195,6 +205,8 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
         File.Delete(path);
       }
     }
+
+    return credentialRemoved;
   }
 
   private async Task<FileStream> LockAsync(CancellationToken ct) {

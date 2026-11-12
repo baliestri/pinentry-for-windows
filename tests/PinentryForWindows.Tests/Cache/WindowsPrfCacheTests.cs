@@ -60,6 +60,42 @@ public sealed class WindowsPrfCacheTests {
     finally { Directory.Delete(directory, true); }
   }
 
+  [Fact]
+  public async Task Clear_all_removes_local_files_when_the_hello_credential_is_gone() {
+    var directory = TestDirectory();
+    try {
+      await new WindowsPrfCache(directory, new FakePrf()).WriteAsync("windows", GRIP, "one"u8.ToArray(),
+        CancellationToken.None);
+      var orphaned = new WindowsPrfCache(directory, new FakePrf { DeleteFails = true });
+
+      Assert.False(await orphaned.ClearAllAsync(CancellationToken.None));
+      Assert.False(File.Exists(Path.Combine(directory, "hello.cred")));
+      Assert.Empty(Directory.EnumerateFiles(Path.Combine(directory, "entries"), "*.bin"));
+
+      // The cache must be usable again with a fresh credential.
+      await orphaned.WriteAsync("windows", GRIP, "two"u8.ToArray(), CancellationToken.None);
+      using var recovered = await orphaned.ReadAsync("windows", GRIP, CancellationToken.None);
+      Assert.NotNull(recovered);
+    }
+    finally { Directory.Delete(directory, true); }
+  }
+
+  [Fact]
+  public async Task Clear_all_removes_local_files_when_the_credential_record_is_damaged() {
+    var directory = TestDirectory();
+    try {
+      var cache = new WindowsPrfCache(directory, new FakePrf());
+      await cache.WriteAsync("windows", GRIP, "one"u8.ToArray(), CancellationToken.None);
+      File.WriteAllBytes(Path.Combine(directory, "hello.cred"), [0xff]);
+
+      Assert.False(await cache.ClearAllAsync(CancellationToken.None));
+      Assert.False(File.Exists(Path.Combine(directory, "hello.cred")));
+      Assert.Empty(Directory.EnumerateFiles(Path.Combine(directory, "entries"), "*.bin"));
+      Assert.True(await cache.ClearAllAsync(CancellationToken.None));
+    }
+    finally { Directory.Delete(directory, true); }
+  }
+
   private static string TestDirectory() {
     var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
     var directory = Path.Combine(root, "artifacts", "tests", Guid.NewGuid().ToString("N"));
@@ -69,6 +105,7 @@ public sealed class WindowsPrfCacheTests {
 
   private sealed class FakePrf : IPrfProvider {
     public bool IsAvailable => true;
+    public bool DeleteFails { get; init; }
 
     public ValueTask<byte[]> CreateCredentialAsync(CancellationToken ct)
       => ValueTask.FromResult(new byte[] { 1, 2, 3 });
@@ -78,6 +115,8 @@ public sealed class WindowsPrfCacheTests {
       => ValueTask.FromResult(HMACSHA256.HashData(credentialId.Span, salt.Span));
 
     public ValueTask DeleteCredentialAsync(ReadOnlyMemory<byte> credentialId, CancellationToken ct)
-      => ValueTask.CompletedTask;
+      => DeleteFails
+        ? ValueTask.FromException(new InvalidOperationException("Credential not found."))
+        : ValueTask.CompletedTask;
   }
 }
