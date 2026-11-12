@@ -471,4 +471,4 @@ project handles broker/cache/UI, and `PinentryForWindows.Relay` handles the Linu
 - [AssuanLibrary](https://github.com/baliestri/assuan-library) 2.0.0 supplies the Assuan protocol primitives and
   server-session API.
 
-Pinentry for Windows is licensed under the [MIT License](LICENSE.md).
+Pinentry for Windows is licensed under the [zlib/libpng License](LICENSE.md).
