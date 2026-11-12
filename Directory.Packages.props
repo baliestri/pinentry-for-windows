@@ -3,12 +3,10 @@
     <PackageVersion Include="AssuanLibrary" Version="2.0.1" />
     <PackageVersion Include="Meziantou.Analyzer" Version="3.0.326" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.360">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageVersion>
-    <PackageVersion Include="xunit.v3" Version="4.0.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.3" />
   </ItemGroup>
 </Project>
