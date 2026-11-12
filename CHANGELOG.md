@@ -1,5 +1,47 @@
 # Pinentry For Windows Changelog
 
+## [2.1.0](https://github.com/baliestri/pinentry-for-windows/compare/v2.0.1..v2.1.0) - 2026-11-12
+
+### ⛰️  Features
+
+- *(identity)* Renew bridge certificates and warn before they expire - ([d3e7421](https://github.com/baliestri/pinentry-for-windows/commit/d3e7421c73304fd25bb9b6ed01b4852d49d7d55d))
+
+### 🐛 Bug Fixes
+
+- *(cache)* Recover from a missing Hello credential and stale entries - ([80e0eba](https://github.com/baliestri/pinentry-for-windows/commit/80e0eba751b8a3d84d3d0c4ba5d1215d39d02e39))
+- *(ui)* Report oversized passphrases and harden helper launch - ([0324761](https://github.com/baliestri/pinentry-for-windows/commit/03247610547752a4ffad52bf48a2480339940c97))
+
+### 📚 Documentation
+
+- *(readme)* Revise wording and update the AssuanLibrary version - ([cd6af1f](https://github.com/baliestri/pinentry-for-windows/commit/cd6af1f0301468ba28f3e73fad9f27f486b2de0d))
+- *(readme)* Realign tables and wrap long paragraphs - ([4e325bb](https://github.com/baliestri/pinentry-for-windows/commit/4e325bb3711bedb69089a958cff3c311aa30c94f))
+- *(readme)* Document renewal, cache limits and release verification - ([d71f7e0](https://github.com/baliestri/pinentry-for-windows/commit/d71f7e0f3d03ff3299d5677dd214f3ab196a1cb4))
+- Move contributor guidance to CONTRIBUTING.md - ([dfda65c](https://github.com/baliestri/pinentry-for-windows/commit/dfda65cbd26210c7f102228708e7ec12a2908558))
+
+### ⚡ Performance
+
+- *(broker)* Stop polling wsl.exe while the VM is unchanged - ([bb51628](https://github.com/baliestri/pinentry-for-windows/commit/bb51628d8ff60cf6128e3c20e417b8eefcf79e1b))
+
+### 🎨 Styling
+
+- *(scripts)* Apply the solution-wide code cleanup to PowerShell scripts - ([0927fbd](https://github.com/baliestri/pinentry-for-windows/commit/0927fbd5d65c7f8a431021c4ce0a6694a83fb761))
+- Apply the solution-wide code cleanup - ([dcb5c3a](https://github.com/baliestri/pinentry-for-windows/commit/dcb5c3ac57be11edfe0e233464a747c4fa8d5eb2))
+
+### ⚙️ Miscellaneous Tasks
+
+- *(license)* Relicense under the zlib/libpng License - ([e9b93d2](https://github.com/baliestri/pinentry-for-windows/commit/e9b93d2d3f082709b669f7f30a91633dfa16f9fb))
+- *(rider)* Add project name metadata - ([7512b5c](https://github.com/baliestri/pinentry-for-windows/commit/7512b5c2b16b29fea4ff927a4aff2b0922d47b22))
+- Bump GitHub Actions to their latest major versions - ([586c6ce](https://github.com/baliestri/pinentry-for-windows/commit/586c6ce3fee13aa54716e651c2a1bf8c451e4619))
+- Pin actions by commit and attest release binaries - ([ea0bc45](https://github.com/baliestri/pinentry-for-windows/commit/ea0bc45ccf965ac30d1365f6bf1a2f63e557d7c9))
+
+### Build
+
+- *(analyzers)* Adopt Meziantou.Analyzer and resolve its findings - ([82e5442](https://github.com/baliestri/pinentry-for-windows/commit/82e5442e1d7ed50ed7c0bcad182a110890bd595f))
+- *(deps)* Bump ProtectedData to 11.0.0 and CsWin32 to 0.3.371 - ([74b2d6d](https://github.com/baliestri/pinentry-for-windows/commit/74b2d6d5b007bd957c53577b54568f969673f604))
+- *(editorconfig)* Rework the code style rules for the solution cleanup - ([9cc63fc](https://github.com/baliestri/pinentry-for-windows/commit/9cc63fcd02c330bf4fed0dc138d954657033be9c))
+- *(tests)* Add <OutputType>Exe</OutputType> in csproj - ([fcc306b](https://github.com/baliestri/pinentry-for-windows/commit/fcc306b37e300d763a5aa4b8e859840dd739b56f))
+- *(tests)* Run test projects on Microsoft.Testing.Platform - ([ca9734d](https://github.com/baliestri/pinentry-for-windows/commit/ca9734de81d6509c85ecd21df3809be21272c848))
+
 ## [2.0.1](https://github.com/baliestri/pinentry-for-windows/compare/v2.0.0..v2.0.1) - 2026-10-21
 
 ### 🐛 Bug Fixes

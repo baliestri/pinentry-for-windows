@@ -30,7 +30,15 @@ case "$1" in
   --init)
     printf 'disposable private key\n' > "$2/client.pfx"
     printf 'disposable public certificate\n' > "$2/client.cer" ;;
-  --trust-broker) cp -- "$3" "$2/broker.cer" ;;
+  --renew)
+    printf '%s %s\n' "$1" "$2" >> "${PFW_TEST_ROOT}/calls"
+    printf 'renewed private key\n' > "$2/client.pfx"
+    printf 'renewed public certificate\n' > "$2/client.cer" ;;
+  --trust-broker)
+    if [[ -f "$2/broker.cer" && "${4:-}" != '--replace' ]] && ! cmp -s -- "$3" "$2/broker.cer"; then
+      exit 3
+    fi
+    cp -- "$3" "$2/broker.cer" ;;
   --remove-identity)
     printf '%s %s\n' "$1" "$2" >> "${PFW_TEST_ROOT}/calls"
     rm -f -- "$2/client.pfx" "$2/client.cer" "$2/broker.cer" ;;
@@ -114,4 +122,24 @@ cat "${repo}/tools/setup-wsl.sh" | bash -s -- \
   --broker-certificate "${root}/broker.cer" --activate > "${root}/pipe-activate-output"
 grep -Fq "pinentry-program ${installed}" "${root}/gnupg/gpg-agent.conf"
 [[ -s "${config_dir}/broker.cer" ]]
-printf 'WSL streamed setup, activation, and revocation cleanup: PASS\n'
+
+if bash "${repo}/tools/setup-wsl.sh" --replace-broker > "${root}/replace-invalid-output" 2>&1; then
+  printf 'Broker replacement was accepted without a certificate.\n' >&2
+  exit 1
+fi
+
+printf 'renewed broker certificate\n' > "${root}/renewed-broker.cer"
+if bash "${repo}/tools/setup-wsl.sh" --broker-certificate "${root}/renewed-broker.cer" \
+     > "${root}/repin-output" 2>&1; then
+  printf 'A different broker certificate replaced the pin without --replace-broker.\n' >&2
+  exit 1
+fi
+grep -Fxq 'disposable broker certificate' "${config_dir}/broker.cer"
+
+bash "${repo}/tools/setup-wsl.sh" --renew --broker-certificate "${root}/renewed-broker.cer" \
+  --replace-broker > "${root}/renew-output"
+grep -Fq -- "--renew ${config_dir}" "${root}/calls"
+grep -Fxq 'renewed public certificate' "${config_dir}/client.cer"
+grep -Fxq 'renewed broker certificate' "${config_dir}/broker.cer"
+grep -Fq "pinentry-program ${installed}" "${root}/gnupg/gpg-agent.conf"
+printf 'WSL streamed setup, activation, renewal, and revocation cleanup: PASS\n'

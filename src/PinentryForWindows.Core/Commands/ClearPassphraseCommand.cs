@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using AssuanLibrary.Server;
@@ -22,6 +22,6 @@ internal sealed class ClearPassphraseCommand : ICommandHandler<PinentrySessionSt
       throw HandlerException.Remote(67109144, "invalid key");
     }
 
-    await context.State.Cache.RemoveAsync(context.State.Origin, grip.ToUpperInvariant(), ct);
+    await context.State.Cache.RemoveAsync(context.State.Origin, grip.ToUpperInvariant(), ct).ConfigureAwait(false);
   }
 }

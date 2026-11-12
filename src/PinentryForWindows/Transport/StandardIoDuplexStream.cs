@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 namespace PinentryForWindows.Transport;
@@ -43,8 +43,8 @@ internal sealed class StandardIoDuplexStream(Stream input, Stream output) : Stre
   }
 
   public override async ValueTask DisposeAsync() {
-    await input.DisposeAsync();
-    await output.DisposeAsync();
-    await base.DisposeAsync();
+    await input.DisposeAsync().ConfigureAwait(false);
+    await output.DisposeAsync().ConfigureAwait(false);
+    await base.DisposeAsync().ConfigureAwait(false);
   }
 }

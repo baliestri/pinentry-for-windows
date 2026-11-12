@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Text;
@@ -83,10 +83,45 @@ public sealed class PinentryProtocolTests {
   }
 
   [Fact]
+  public async Task Error_after_a_cache_hit_removes_the_rejected_entry() {
+    var cache = new FakeCache();
+    cache.Seed("windows", GRIP, "stale");
+    cache.Seed("wsl:archlinux", GRIP, "other-origin");
+    var ui = new FakeUi("corrected", false);
+    var output = await RunAsync($"OPTION allow-external-password-cache\nSETKEYINFO n/{GRIP}\nGETPIN\n" +
+                                "SETERROR Bad%20Passphrase\nGETPIN\nGETPIN\nBYE\n", ui, cache);
+
+    Assert.Contains("S PASSWORD_FROM_CACHE\nD stale\nOK\nOK\nD corrected\nOK\nD corrected\nOK", output);
+    Assert.Equal(2, ui.PromptCount);
+    Assert.False(cache.Contains("windows", GRIP));
+    Assert.True(cache.Contains("wsl:archlinux", GRIP));
+  }
+
+  [Fact]
+  public async Task Error_after_typed_input_keeps_the_cached_entry() {
+    var cache = new FakeCache();
+    var ui = new FakeUi("typed", false);
+    var output = await RunAsync($"OPTION allow-external-password-cache\nSETKEYINFO n/{GRIP}\nGETPIN\n" +
+                                "SETERROR Bad%20Passphrase\nGETPIN\nBYE\n", ui, cache,
+      beforeSecondPrompt: () => cache.Seed("windows", GRIP, "valid"));
+
+    Assert.DoesNotContain("S PASSWORD_FROM_CACHE", output);
+    Assert.Equal(2, ui.PromptCount);
+    Assert.True(cache.Contains("windows", GRIP));
+  }
+
+  [Fact]
   public async Task Timed_out_ui_returns_pinentry_timeout_error() {
     var ui = new FakeUi("not-used", false) { ShouldTimeOut = true };
     var output = await RunAsync("SETTIMEOUT 1\nGETPIN\nBYE\n", ui, new FakeCache());
     Assert.Contains("ERR 83886142", output);
+  }
+
+  [Fact]
+  public async Task Oversized_passphrase_returns_too_large_error() {
+    var ui = new FakeUi("not-used", false) { SecretTooLong = true };
+    var output = await RunAsync("GETPIN\nBYE\n", ui, new FakeCache());
+    Assert.Contains("ERR 83886147", output);
   }
 
   [Fact]
@@ -193,7 +228,7 @@ public sealed class PinentryProtocolTests {
         bothPrompting.TrySetResult();
       }
 
-      await bothPrompting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+      await bothPrompting.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
     }
   }
 
@@ -239,7 +274,8 @@ public sealed class PinentryProtocolTests {
   [InlineData(932, "パスワード:")]
   public async Task Localized_prompts_use_the_configured_native_code_page(int codePage, string prompt) {
     Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-    var nativeEncoding = Encoding.GetEncoding(codePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+    var nativeEncoding =
+      Encoding.GetEncoding(codePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
     var ui = new FakeUi("typed", false);
     var commands = nativeEncoding.GetBytes($"OPTION default-prompt={prompt}\nGETPIN\nBYE\n");
     var output = await RunAsync(commands, ui, new FakeCache(), textFallbackEncoding: nativeEncoding);
@@ -253,7 +289,8 @@ public sealed class PinentryProtocolTests {
   [InlineData("SETPROMPT Phrase secr%E8te%A0:", "Phrase secrète\u00a0:")]
   public async Task Native_prompt_decoding_handles_raw_and_percent_escaped_bytes(string command, string expected) {
     var ui = new FakeUi("typed", false);
-    var output = await RunAsync(Encoding.Latin1.GetBytes(command + "\nGETPIN\nBYE\n"), ui, new FakeCache(), textFallbackEncoding: Encoding.Latin1);
+    var output = await RunAsync(Encoding.Latin1.GetBytes(command + "\nGETPIN\nBYE\n"), ui, new FakeCache(),
+      textFallbackEncoding: Encoding.Latin1);
 
     Assert.DoesNotContain("ERR", output);
     Assert.Equal(expected, ui.LastPromptLabel);
@@ -262,7 +299,8 @@ public sealed class PinentryProtocolTests {
   [Fact]
   public async Task Valid_utf8_prompt_takes_precedence_over_native_fallback() {
     var ui = new FakeUi("typed", false);
-    var output = await RunAsync(Encoding.UTF8.GetBytes("SETPROMPT Phrase secrète\u00a0: 🔑\nGETPIN\nBYE\n"), ui, new FakeCache(), textFallbackEncoding: Encoding.Latin1);
+    var output = await RunAsync(Encoding.UTF8.GetBytes("SETPROMPT Phrase secrète\u00a0: 🔑\nGETPIN\nBYE\n"), ui,
+      new FakeCache(), textFallbackEncoding: Encoding.Latin1);
 
     Assert.DoesNotContain("ERR", output);
     Assert.Equal("Phrase secrète\u00a0: 🔑", ui.LastPromptLabel);
@@ -270,14 +308,17 @@ public sealed class PinentryProtocolTests {
 
   [Fact]
   public async Task Unused_localized_options_are_ignored_without_decoding_their_values() {
-    var output = await RunAsync(Encoding.Latin1.GetBytes("OPTION default-tt-visi=Rendre la phrase secrète visible\nBYE\n"), new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
+    var output =
+      await RunAsync(Encoding.Latin1.GetBytes("OPTION default-tt-visi=Rendre la phrase secrète visible\nBYE\n"),
+        new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
 
     Assert.DoesNotContain("ERR", output);
   }
 
   [Fact]
   public async Task Sessions_without_native_fallback_reject_non_utf8_text() {
-    var output = await RunAsync(Encoding.Latin1.GetBytes("SETPROMPT Phrase secrète\nBYE\n"), new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
+    var output = await RunAsync(Encoding.Latin1.GetBytes("SETPROMPT Phrase secrète\nBYE\n"),
+      new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
 
     Assert.Contains("ERR 67109144 invalid value", output);
   }
@@ -289,18 +330,24 @@ public sealed class PinentryProtocolTests {
   [InlineData("SETTIMEOUT %E8")]
   [InlineData("CLEARPASSPHRASE %E8")]
   public async Task Native_text_fallback_preserves_escape_and_identifier_validation(string command) {
-    var output = await RunAsync(Encoding.ASCII.GetBytes(command + "\nBYE\n"), new FakeUi("unused", false), new FakeCache(), textFallbackEncoding: Encoding.Latin1);
+    var output = await RunAsync(Encoding.ASCII.GetBytes(command + "\nBYE\n"), new FakeUi("unused", false),
+      new FakeCache(), textFallbackEncoding: Encoding.Latin1);
 
     Assert.Contains("ERR 67109144", output);
   }
 
-  private static async Task<string> RunAsync(string commands, FakeUi ui, FakeCache cache, string origin = "windows") {
-    return await RunAsync(Encoding.UTF8.GetBytes(commands), ui, cache, origin);
+  private static async Task<string> RunAsync(string commands, FakeUi ui, FakeCache cache, string origin = "windows",
+    Action? beforeSecondPrompt = null) {
+    ui.BeforeSecondPrompt = beforeSecondPrompt;
+    return await RunAsync(Encoding.UTF8.GetBytes(commands), ui, cache, origin).ConfigureAwait(false);
   }
 
-  private static async Task<string> RunAsync(byte[] commands, FakeUi ui, FakeCache cache, string origin = "windows", Encoding? textFallbackEncoding = null) {
-    await using var stream = new ScriptedStream(commands);
-    await PinentryProtocol.RunAsync(stream, origin, true, ui, cache, CancellationToken.None, textFallbackEncoding: textFallbackEncoding);
+  private static async Task<string> RunAsync(byte[] commands, FakeUi ui, FakeCache cache, string origin = "windows",
+    Encoding? textFallbackEncoding = null) {
+    var stream = new ScriptedStream(commands);
+    await using var streamScope = stream.ConfigureAwait(false);
+    await PinentryProtocol.RunAsync(stream, origin, true, ui, cache, CancellationToken.None,
+      textFallbackEncoding: textFallbackEncoding).ConfigureAwait(false);
     return Encoding.UTF8.GetString(stream.Output);
   }
 
@@ -314,20 +361,30 @@ public sealed class PinentryProtocolTests {
     public string? LastDialogTitle { get; private set; }
     public long LastGetPinTimestamp { get; private set; }
     public bool ShouldTimeOut { get; init; }
+    public bool SecretTooLong { get; init; }
     public bool ConfirmAnswer { get; init; } = true;
     public int ConfirmCount { get; private set; }
     public int MessageCount { get; private set; }
     public Queue<string>? Passwords { get; init; }
     public Func<Task>? WaitBeforePrompt { get; init; }
+    public Action? BeforeSecondPrompt { get; set; }
 
     public async ValueTask<PasswordPromptResult?> PromptAsync(PromptRequest request, CancellationToken ct) {
       PromptCount++;
+      if (PromptCount == 2) {
+        BeforeSecondPrompt?.Invoke();
+      }
+
       if (ShouldTimeOut) {
         throw new TimeoutException();
       }
 
+      if (SecretTooLong) {
+        throw new SecretTooLongException();
+      }
+
       if (WaitBeforePrompt is not null) {
-        await WaitBeforePrompt();
+        await WaitBeforePrompt().ConfigureAwait(false);
       }
 
       LastOfferSave = request.OfferSave;
@@ -382,6 +439,8 @@ public sealed class PinentryProtocolTests {
     }
 
     public void Seed(string origin, string key, string value) => _entries[(origin, key)] = value;
+
+    public bool Contains(string origin, string key) => _entries.ContainsKey((origin, key));
   }
 
   private sealed class ScriptedStream(byte[] input) : Stream {

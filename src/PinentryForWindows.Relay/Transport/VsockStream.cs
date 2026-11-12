@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Net.Sockets;
@@ -36,7 +36,8 @@ internal sealed partial class VsockStream(Socket socket) : Stream {
 
     var scratch = new byte[Math.Min(buffer.Length, 4096)];
     try {
-      var count = await Task.Run(() => ReadNative(socket.SafeHandle, scratch, 0, scratch.Length, ct), ct);
+      var count = await Task.Run(() => ReadNative(socket.SafeHandle, scratch, 0, scratch.Length, ct), ct)
+        .ConfigureAwait(false);
       scratch.AsMemory(0, count).CopyTo(buffer);
       return count;
     }
@@ -48,7 +49,10 @@ internal sealed partial class VsockStream(Socket socket) : Stream {
 
   public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default) {
     var scratch = buffer.ToArray();
-    try { await Task.Run(() => WriteNative(socket.SafeHandle, scratch, 0, scratch.Length, ct), ct); }
+    try {
+      await Task.Run(() => WriteNative(socket.SafeHandle, scratch, 0, scratch.Length, ct), ct)
+        .ConfigureAwait(false);
+    }
     finally { CryptographicOperations.ZeroMemory(scratch); }
   }
 
@@ -64,7 +68,7 @@ internal sealed partial class VsockStream(Socket socket) : Stream {
     => throw new NotSupportedException();
 
   private static unsafe int ReadNative(SafeSocketHandle handle, byte[] destination,
-  int offset, int count, CancellationToken ct) {
+    int offset, int count, CancellationToken ct) {
     if (count == 0) {
       return 0;
     }
@@ -88,7 +92,7 @@ internal sealed partial class VsockStream(Socket socket) : Stream {
   }
 
   private static unsafe void WriteNative(SafeSocketHandle handle, byte[] source,
-  int offset, int count, CancellationToken ct) {
+    int offset, int count, CancellationToken ct) {
     while (count > 0) {
       WaitFor(handle, POLLOUT, ct);
       nint written;

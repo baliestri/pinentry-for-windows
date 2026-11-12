@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Buffers.Binary;
@@ -36,7 +36,7 @@ internal static unsafe partial class VsockConnector {
       // Linux AF_VSOCK option 6 accepts a timeval and bounds a blocking connect.
       Span<byte> timeval = stackalloc byte[16];
       BinaryPrimitives.WriteInt64LittleEndian(timeval[..8], (long)timeout.TotalSeconds);
-      BinaryPrimitives.WriteInt64LittleEndian(timeval[8..], timeout.Microseconds + (timeout.Milliseconds * 1000L));
+      BinaryPrimitives.WriteInt64LittleEndian(timeval[8..], timeout.Microseconds + timeout.Milliseconds * 1000L);
       socket.SetRawSocketOption(AF_VSOCK, 6, timeval);
       ct.ThrowIfCancellationRequested();
       using var cancellation = ct.Register(static state => ((Socket)state!).Dispose(), socket);

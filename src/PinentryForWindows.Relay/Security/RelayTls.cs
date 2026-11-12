@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Net.Security;
@@ -11,7 +11,7 @@ namespace PinentryForWindows.Relay.Security;
 [SupportedOSPlatform("linux")]
 internal static class RelayTls {
   public static async Task<SslStream> AuthenticateAsync(Stream transport, RelayIdentity identity,
-  X509Certificate2 clientCertificate, CancellationToken ct) {
+    X509Certificate2 clientCertificate, CancellationToken ct) {
     var stream = new SslStream(transport, false,
       (_, certificate, _, _) => certificate is not null && identity.IsTrustedBroker(certificate));
     try {
@@ -21,11 +21,11 @@ internal static class RelayTls {
         EnabledSslProtocols = SslProtocols.Tls13,
         AllowRenegotiation = false,
         CertificateRevocationCheckMode = X509RevocationMode.NoCheck
-      }, ct);
+      }, ct).ConfigureAwait(false);
       return stream;
     }
     catch {
-      await stream.DisposeAsync();
+      await stream.DisposeAsync().ConfigureAwait(false);
       throw;
     }
   }

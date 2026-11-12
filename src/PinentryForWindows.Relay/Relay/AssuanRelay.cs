@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Security.Cryptography;
@@ -14,14 +14,14 @@ internal static class AssuanRelay {
     var inbound = Task.Run(() => PumpInputAsync(input, secure, progress, linked.Token), linked.Token);
     var outbound = PumpOutputAsync(secure, output, progress, linked.Token);
     try {
-      var first = await Task.WhenAny(inbound, outbound);
-      await first;
+      var first = await Task.WhenAny(inbound, outbound).ConfigureAwait(false);
+      await first.ConfigureAwait(false);
     }
     finally {
-      await linked.CancelAsync();
-      await input.DisposeAsync();
-      await secure.DisposeAsync();
-      try { await Task.WhenAll(inbound, outbound).WaitAsync(TimeSpan.FromSeconds(1), ct); }
+      await linked.CancelAsync().ConfigureAwait(false);
+      await input.DisposeAsync().ConfigureAwait(false);
+      await secure.DisposeAsync().ConfigureAwait(false);
+      try { await Task.WhenAll(inbound, outbound).WaitAsync(TimeSpan.FromSeconds(1), ct).ConfigureAwait(false); }
       catch (Exception error) when (error is OperationCanceledException or ObjectDisposedException or IOException
                                       or TimeoutException) {
         // stdin can ignore cancellation until its OS pipe closes. This process is exiting.
@@ -34,18 +34,18 @@ internal static class AssuanRelay {
     using var lines = new LineAccumulator();
     try {
       while (true) {
-        var count = await input.ReadAsync(bytes, ct);
+        var count = await input.ReadAsync(bytes, ct).ConfigureAwait(false);
         if (count == 0) {
           break;
         }
 
         lines.Feed(bytes.AsSpan(0, count), progress.OnInputLine);
-        await secure.WriteAsync(bytes.AsMemory(0, count), ct);
-        await secure.FlushAsync(ct);
+        await secure.WriteAsync(bytes.AsMemory(0, count), ct).ConfigureAwait(false);
+        await secure.FlushAsync(ct).ConfigureAwait(false);
       }
 
       lines.Finish();
-      await progress.WaitForDrainAsync(ct);
+      await progress.WaitForDrainAsync(ct).ConfigureAwait(false);
     }
     finally { CryptographicOperations.ZeroMemory(bytes); }
   }
@@ -55,13 +55,13 @@ internal static class AssuanRelay {
     using var lines = new LineAccumulator();
     try {
       while (true) {
-        var count = await secure.ReadAsync(bytes, ct);
+        var count = await secure.ReadAsync(bytes, ct).ConfigureAwait(false);
         if (count == 0) {
           break;
         }
 
-        await output.WriteAsync(bytes.AsMemory(0, count), ct);
-        await output.FlushAsync(ct);
+        await output.WriteAsync(bytes.AsMemory(0, count), ct).ConfigureAwait(false);
+        await output.FlushAsync(ct).ConfigureAwait(false);
         lines.Feed(bytes.AsSpan(0, count), progress.OnOutputLine);
       }
 
@@ -105,8 +105,8 @@ internal static class AssuanRelay {
           return;
         }
 
-        if ((!line.SequenceEqual("OK"u8) && !line.StartsWith("OK "u8) &&
-             !line.SequenceEqual("ERR"u8) && !line.StartsWith("ERR "u8)) ||
+        if (!line.SequenceEqual("OK"u8) && !line.StartsWith("OK "u8) &&
+            !line.SequenceEqual("ERR"u8) && !line.StartsWith("ERR "u8) ||
             _pending <= 0) {
           return;
         }

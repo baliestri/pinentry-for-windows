@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Net.Security;
@@ -9,9 +9,10 @@ namespace PinentryForWindows.Broker;
 
 internal static class BrokerTls {
   public static async Task<AuthenticatedBrokerStream> AuthenticateAsync(Stream transport,
-  X509Certificate2 serverCertificate, BrokerIdentity identity, CancellationToken ct) {
+    X509Certificate2 serverCertificate, BrokerIdentity identity, CancellationToken ct) {
     string? origin = null;
-    var stream = new SslStream(transport, false, (_, certificate, _, _) => {
+    var stream = new SslStream(transport, false, (_, certificate, _, _) =>
+    {
       if (certificate is null) {
         return false;
       }
@@ -34,14 +35,14 @@ internal static class BrokerTls {
         EnabledSslProtocols = SslProtocols.Tls13,
         AllowRenegotiation = false,
         CertificateRevocationCheckMode = X509RevocationMode.NoCheck
-      }, ct);
+      }, ct).ConfigureAwait(false);
 
       return origin is not null
         ? new AuthenticatedBrokerStream(stream, origin)
         : throw new AuthenticationException("Client was not paired.");
     }
     catch {
-      await stream.DisposeAsync();
+      await stream.DisposeAsync().ConfigureAwait(false);
       throw;
     }
   }

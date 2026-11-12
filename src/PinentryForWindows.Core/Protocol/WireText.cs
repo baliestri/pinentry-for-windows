@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Text;
@@ -8,7 +8,7 @@ using AssuanLibrary.Server;
 namespace PinentryForWindows.Core.Protocol;
 
 internal static class WireText {
-  private static readonly UTF8Encoding _strictUtf8 = new(false, true);
+  private readonly static UTF8Encoding _strictUtf8 = new(false, true);
 
   public static string Decode(ReadOnlyMemory<byte> raw, Encoding? fallbackEncoding = null) {
     var bytes = raw.ToArray();

@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Diagnostics;
@@ -16,7 +16,7 @@ public sealed class PinentryLatencyTests {
     try {
       var path = Path.Combine(directory, "latency.txt");
       var started = Stopwatch.GetTimestamp();
-      PinentryLatency.Record(path, started, started + (Stopwatch.Frequency / 10));
+      PinentryLatency.Record(path, started, started + Stopwatch.Frequency / 10);
 
       var line = File.ReadAllText(path).Trim();
       Assert.True(double.TryParse(line, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture,

@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Diagnostics;
@@ -73,7 +73,7 @@ public sealed class CliCompatibilityTests {
   }
 
   private static async Task<(int ExitCode, string StdOut, string StdErr)> RunAsync(string directory,
-  params string[] args) {
+    params string[] args) {
     var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
     var configuration = new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name
                         ?? throw new InvalidOperationException("Test build configuration could not be determined.");
@@ -88,16 +88,14 @@ public sealed class CliCompatibilityTests {
         ["GNUPGHOME"] = directory
       }
     };
-    foreach (var arg in args) {
-      start.ArgumentList.Add(arg);
-    }
+    foreach (var arg in args) start.ArgumentList.Add(arg);
 
     using var process = Process.Start(start) ?? throw new InvalidOperationException("Could not start pfw.");
     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
     var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
     var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-    await process.WaitForExitAsync(timeout.Token);
-    return (process.ExitCode, await stdout, await stderr);
+    await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+    return (process.ExitCode, await stdout.ConfigureAwait(false), await stderr.ConfigureAwait(false));
   }
 
   private sealed class FakePrf : IPrfProvider {
@@ -107,7 +105,7 @@ public sealed class CliCompatibilityTests {
       => ValueTask.FromResult(new byte[] { 1, 2, 3 });
 
     public ValueTask<byte[]> DeriveAsync(ReadOnlyMemory<byte> credentialId,
-    ReadOnlyMemory<byte> salt, CancellationToken ct)
+      ReadOnlyMemory<byte> salt, CancellationToken ct)
       => ValueTask.FromResult(HMACSHA256.HashData(credentialId.Span, salt.Span));
 
     public ValueTask DeleteCredentialAsync(ReadOnlyMemory<byte> credentialId, CancellationToken ct)

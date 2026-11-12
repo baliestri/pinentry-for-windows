@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Net;
@@ -8,7 +8,7 @@ namespace PinentryForWindows.Broker;
 
 internal sealed class HyperVEndpoint(Guid vmId) : EndPoint {
   public const int VSOCK_PORT = 44986;
-  public static readonly Guid ServiceId = new("0000afba-facb-11e6-bd58-64006a7986d3");
+  public readonly static Guid ServiceId = new("0000afba-facb-11e6-bd58-64006a7986d3");
   public override AddressFamily AddressFamily => (AddressFamily)34;
 
   public override SocketAddress Serialize() {

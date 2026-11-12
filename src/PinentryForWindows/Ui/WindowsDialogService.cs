@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Runtime.InteropServices;
@@ -12,7 +12,7 @@ namespace PinentryForWindows.Ui;
 internal static class WindowsDialogService {
   private const int OK_BUTTON = 1;
   private const int CANCEL_BUTTON = 2;
-  private static readonly PFTASKDIALOGCALLBACK _callback = OnNotification;
+  private readonly static PFTASKDIALOGCALLBACK _callback = OnNotification;
 
   public static unsafe bool Show(DialogRequest request, CancellationToken ct) {
     fixed (char* title = request.Title, message = request.Description,
@@ -55,14 +55,14 @@ internal static class WindowsDialogService {
   }
 
   private static HRESULT OnNotification(HWND hwnd, TASKDIALOG_NOTIFICATIONS notification,
-  WPARAM timer, LPARAM lParam, nint stateHandle) {
+    WPARAM timer, LPARAM lParam, nint stateHandle) {
     if (notification != TASKDIALOG_NOTIFICATIONS.TDN_TIMER ||
         GCHandle.FromIntPtr(stateHandle).Target is not DialogState state) {
       return new HRESULT(0);
     }
 
     if (state.Token.IsCancellationRequested ||
-        (state.TimeoutMilliseconds > 0 && (long)timer.Value >= state.TimeoutMilliseconds)) {
+        state.TimeoutMilliseconds > 0 && (long)timer.Value >= state.TimeoutMilliseconds) {
       state.TimedOut = !state.Token.IsCancellationRequested;
       _ = PInvoke.SendMessage(hwnd, (uint)TASKDIALOG_MESSAGES.TDM_CLICK_BUTTON,
         new WPARAM((nuint)state.CloseButton));

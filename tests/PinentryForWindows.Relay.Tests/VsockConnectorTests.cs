@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Diagnostics;
@@ -18,7 +18,8 @@ public sealed class VsockConnectorTests {
 
     using var cancelled = new CancellationTokenSource(TimeSpan.FromSeconds(1));
     var elapsed = Stopwatch.StartNew();
-    var error = Record.Exception(() => {
+    var error = Record.Exception(() =>
+    {
       using var socket = VsockConnector.Connect(44987, TimeSpan.FromMilliseconds(500), cancelled.Token);
     });
 

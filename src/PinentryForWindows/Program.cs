@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Security.Cryptography.X509Certificates;
@@ -12,19 +12,21 @@ using PinentryForWindows.Transport;
 using PinentryForWindows.Ui;
 
 if (args is ["--ui-helper", var _, var _]) {
-  return await UiHelper.RunAsync(args[1], args[2]);
+  return await UiHelper.RunAsync(args[1], args[2]).ConfigureAwait(false);
 }
 
 using var stop = new CancellationTokenSource();
 var productVersion = typeof(PinentryPaths).Assembly.GetName().Version?.ToString() ?? "unknown";
-Console.CancelKeyPress += (_, e) => {
+Console.CancelKeyPress += (_, e) =>
+{
   e.Cancel = true;
   stop.Cancel();
 };
 
 try {
   switch (args) {
-    case ["--init-broker", var _]: {
+    case ["--init-broker", var _]:
+    {
       var identity = new BrokerIdentity(args[1]);
       using var certificate = identity.GetOrCreateServerCertificate();
       Console.WriteLine($"Broker public certificate: {identity.PublicCertificatePath}");
@@ -34,7 +36,20 @@ try {
       new BrokerIdentity(args[1]).ApproveClient(args[2], args[3]);
       Console.WriteLine("Client paired.");
       return 0;
-    case ["--revoke-client", var _, var _]: {
+    case ["--replace-client", var _, var _, var _]:
+      new BrokerIdentity(args[1]).ReplaceClient(args[2], args[3]);
+      Console.WriteLine("Client pairing replaced.");
+      return 0;
+    case ["--renew-broker", var _]:
+    {
+      var identity = new BrokerIdentity(args[1]);
+      identity.RenewServerCertificate();
+      Console.WriteLine($"Broker certificate renewed: {identity.PublicCertificatePath}");
+      Console.WriteLine("Restart the broker and pin the new certificate in every paired WSL relay.");
+      return 0;
+    }
+    case ["--revoke-client", var _, var _]:
+    {
       using var certificate = X509CertificateLoader.LoadCertificateFromFile(args[2]);
       new BrokerIdentity(args[1]).RevokeClient(certificate);
       Console.WriteLine("Client revoked.");
@@ -44,30 +59,33 @@ try {
       new BrokerIdentity(args[1]).Remove();
       Console.WriteLine("Broker pairing material removed.");
       return 0;
-    case ["--vm-id", var _]: {
-      var vmId = await VmIdProvider.TryGetAsync(args[1], stop.Token);
+    case ["--vm-id", var _]:
+    {
+      var vmId = await VmIdProvider.TryGetAsync(args[1], stop.Token).ConfigureAwait(false);
       Console.WriteLine(vmId?.ToString("D") ?? "not running");
       return 0;
     }
-    case ["--broker", var _]: {
+    case ["--broker", var _]:
+    {
       VerboseLog.Write(VerboseEvent.BrokerStarted);
       var host = new BrokerHost(new BrokerIdentity(args[1]),
         new UiCoordinator(), PinentryPaths.CreateCache(), productVersion);
-      await host.RunAsync(stop.Token);
+      await host.RunAsync(stop.Token).ConfigureAwait(false);
       return 0;
     }
   }
 
   if (args.Length != 0) {
     VerboseLog.Write(VerboseEvent.CommandStarted);
-    return await PinentryCli.RunAsync(args, stop.Token);
+    return await PinentryCli.RunAsync(args, stop.Token).ConfigureAwait(false);
   }
 
   VerboseLog.Write(VerboseEvent.LocalSessionStarted);
   Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
   var nativeEncoding = Encoding.GetEncoding(0, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
   await PinentryProtocol.RunAsync(new StandardIoDuplexStream(Console.OpenStandardInput(), Console.OpenStandardOutput()),
-    "windows", true, new UiCoordinator(), PinentryPaths.CreateCache(), stop.Token, productVersion, nativeEncoding);
+      "windows", true, new UiCoordinator(), PinentryPaths.CreateCache(), stop.Token, productVersion, nativeEncoding)
+    .ConfigureAwait(false);
   return 0;
 }
 catch (OperationCanceledException) {

@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Text;
@@ -67,6 +67,7 @@ public sealed class RelayForwardingTests {
     }
 
     public override void Flush() { }
+
     public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 
     public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) {
@@ -93,7 +94,8 @@ public sealed class RelayForwardingTests {
       => throw new NotSupportedException();
   }
 
-  private sealed class DelayedServer(string response = "D dummy%25secret\nOK\n",
+  private sealed class DelayedServer(
+    string response = "D dummy%25secret\nOK\n",
     string greeting = "OK ready\n",
     TimeSpan? greetingDelay = null) : Stream {
     private readonly TaskCompletionSource _command = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -120,15 +122,16 @@ public sealed class RelayForwardingTests {
       switch (state) {
         case 1:
           if (greetingDelay is { } delay) {
-            await Task.Delay(delay, cancellationToken);
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
           }
 
           var greetingBytes = Encoding.UTF8.GetBytes(greeting);
           greetingBytes.CopyTo(buffer);
           return greetingBytes.Length;
-        case 2: {
-          await _command.Task.WaitAsync(cancellationToken);
-          await Task.Delay(50, cancellationToken);
+        case 2:
+        {
+          await _command.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+          await Task.Delay(50, cancellationToken).ConfigureAwait(false);
           var bytes = Encoding.UTF8.GetBytes(response);
           bytes.CopyTo(buffer);
           return bytes.Length;

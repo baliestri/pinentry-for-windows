@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Diagnostics;
@@ -27,7 +27,7 @@ public sealed class UiWireTests {
     byte[] oversizedHeader = [(byte)'P', (byte)'F', (byte)'R', (byte)'1', 1, 0, 0x01, 0x10];
     using var stream = new MemoryStream(oversizedHeader);
     await Assert.ThrowsAsync<InvalidDataException>(async () =>
-      await UiWire.ReadResultAsync(stream, CancellationToken.None));
+      await UiWire.ReadResultAsync(stream, CancellationToken.None).ConfigureAwait(false));
   }
 
   [Fact]
@@ -39,11 +39,20 @@ public sealed class UiWireTests {
   }
 
   [Fact]
+  public async Task Oversized_passphrase_is_reported_as_too_long_instead_of_a_helper_failure() {
+    using var stream = new MemoryStream();
+    await UiWire.WriteTooLongAsync(stream, CancellationToken.None);
+    stream.Position = 0;
+    await Assert.ThrowsAsync<SecretTooLongException>(async () =>
+      await UiWire.ReadResultAsync(stream, CancellationToken.None).ConfigureAwait(false));
+  }
+
+  [Fact]
   public async Task Prompt_description_is_bounded_before_launching_ui() {
     using var stream = new MemoryStream();
     var request = new PromptRequest("Title", new string('X', 5000), "User", "Password:", false, 0);
     await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
-      await UiWire.WriteRequestAsync(stream, request, CancellationToken.None));
+      await UiWire.WriteRequestAsync(stream, request, CancellationToken.None).ConfigureAwait(false));
   }
 
   [Fact]
@@ -80,7 +89,7 @@ public sealed class UiWireTests {
       "User label 12345", "Password prompt 123", false, 0);
 
     await Assert.ThrowsAsync<IOException>(async () =>
-      await UiWire.WriteRequestAsync(stream, request, CancellationToken.None));
+      await UiWire.WriteRequestAsync(stream, request, CancellationToken.None).ConfigureAwait(false));
     Assert.Equal(2, stream.BorrowedTextBuffers.Count);
     Assert.All(stream.BorrowedTextBuffers, bytes => Assert.All(bytes, value => Assert.Equal(0, value)));
   }

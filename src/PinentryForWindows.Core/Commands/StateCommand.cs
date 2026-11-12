@@ -1,6 +1,7 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
+using System.Globalization;
 using AssuanLibrary.Server;
 using PinentryForWindows.Core.Protocol;
 
@@ -13,7 +14,9 @@ internal sealed class StateCommand(string name) : ICommandHandler<PinentrySessio
   public ValueTask HandleAsync(CommandContext<PinentrySessionState> context, CancellationToken ct) {
     var state = context.State;
     var fallbackEncoding = Name is "SETKEYINFO" or "SETTIMEOUT" ? null : state.TextFallbackEncoding;
-    var value = Name == "SETTIMEOUT" ? WireText.Decode(context.Arguments) : WireText.Require(context.Arguments, fallbackEncoding);
+    var value = string.Equals(Name, "SETTIMEOUT", StringComparison.Ordinal)
+      ? WireText.Decode(context.Arguments)
+      : WireText.Require(context.Arguments, fallbackEncoding);
     switch (Name) {
       case "SETTITLE":
         state.Title = value;
@@ -51,7 +54,7 @@ internal sealed class StateCommand(string name) : ICommandHandler<PinentrySessio
         state.NotOkLabel = value.Replace('_', '&');
         break;
       case "SETTIMEOUT":
-        if (int.TryParse(value, out var seconds) &&
+        if (int.TryParse(value, CultureInfo.InvariantCulture, out var seconds) &&
             seconds is >= 0 and <= 300) {
           state.TimeoutSeconds = seconds;
         }

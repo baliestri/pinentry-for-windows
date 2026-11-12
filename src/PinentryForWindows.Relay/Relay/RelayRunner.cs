@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Diagnostics;
@@ -13,9 +13,10 @@ namespace PinentryForWindows.Relay.Relay;
 [SupportedOSPlatform("linux")]
 internal static class RelayRunner {
   private const int PORT = 44986;
-  private static readonly TimeSpan _connectionBudget = TimeSpan.FromSeconds(15);
+  private readonly static TimeSpan _connectionBudget = TimeSpan.FromSeconds(15);
 
   public static async Task RunAsync(RelayIdentity identity, CancellationToken ct) {
+    identity.EnsureCurrent();
     using var clientCertificate = identity.LoadClientCertificate();
     VerboseLog.Write(VerboseEvent.IdentityLoaded);
     var elapsed = Stopwatch.StartNew();
@@ -31,7 +32,7 @@ internal static class RelayRunner {
       }
       catch (Exception error) when
         (error is SocketException or TimeoutException && elapsed.Elapsed < _connectionBudget) {
-        await Task.Delay(TimeSpan.FromMilliseconds(200), ct);
+        await Task.Delay(TimeSpan.FromMilliseconds(200), ct).ConfigureAwait(false);
       }
     }
 
@@ -41,13 +42,16 @@ internal static class RelayRunner {
 
     VerboseLog.Write(VerboseEvent.VsockConnected);
     using (socket) {
-      await using var network = new VsockStream(socket);
+      var network = new VsockStream(socket);
+      await using var networkScope = network.ConfigureAwait(false);
       using var handshake = CancellationTokenSource.CreateLinkedTokenSource(ct);
       handshake.CancelAfter(TimeSpan.FromSeconds(10));
-      await using var secure = await RelayTls.AuthenticateAsync(network, identity,
-        clientCertificate, handshake.Token);
+      var secure = await RelayTls.AuthenticateAsync(network, identity,
+        clientCertificate, handshake.Token).ConfigureAwait(false);
+      await using var secureScope = secure.ConfigureAwait(false);
       VerboseLog.Write(VerboseEvent.TlsAuthenticated);
-      await AssuanRelay.RunAsync(Console.OpenStandardInput(), Console.OpenStandardOutput(), secure, ct);
+      await AssuanRelay.RunAsync(Console.OpenStandardInput(), Console.OpenStandardOutput(), secure, ct)
+        .ConfigureAwait(false);
       VerboseLog.Write(VerboseEvent.RelayFinished);
     }
   }

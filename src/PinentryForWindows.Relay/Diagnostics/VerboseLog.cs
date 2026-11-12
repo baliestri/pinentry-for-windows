@@ -1,10 +1,11 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 namespace PinentryForWindows.Relay.Diagnostics;
 
 internal static class VerboseLog {
-  private static readonly bool _enabled = Environment.GetEnvironmentVariable("PFW_VERBOSE") == "1";
+  private readonly static bool _enabled =
+    string.Equals(Environment.GetEnvironmentVariable("PFW_VERBOSE"), "1", StringComparison.Ordinal);
 
   public static void Write(VerboseEvent eventType) {
     if (!_enabled) {

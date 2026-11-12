@@ -1,4 +1,4 @@
-// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
+// Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the zlib/libpng License.
 // See the LICENSE file in the repository root for full license text.
 
 using System.Text;
@@ -7,12 +7,14 @@ using PinentryForWindows.Core.Contracts;
 
 namespace PinentryForWindows.Core.Protocol;
 
-public sealed partial class PinentrySessionState(string origin,
+public sealed partial class PinentrySessionState(
+  string origin,
   bool authenticated,
   IPinentryUi ui,
   IPinentryCache cache,
   string productVersion,
   Encoding? textFallbackEncoding = null) {
+  private const int REGEX_TIMEOUT_MILLISECONDS = 1000;
   private bool _cardDescription;
   private bool _keyInfoCleared;
   public string Origin { get; } = origin;
@@ -33,6 +35,10 @@ public sealed partial class PinentrySessionState(string origin,
   public string RepeatError { get; set; } = string.Empty;
   public string CacheUser { get; set; } = string.Empty;
   public string? KeyGrip { get; private set; }
+
+  /// <summary>Key whose passphrase the previous GETPIN of this session answered from the cache.</summary>
+  public string? LastCachedGrip { get; set; }
+
   public bool CardOrToken => _cardDescription || _keyInfoCleared;
   public bool AllowExternalCache { get; set; }
   public bool Repeat { get; set; }
@@ -43,16 +49,24 @@ public sealed partial class PinentrySessionState(string origin,
   public bool CacheEligible
     => Cache.IsAvailable && AllowExternalCache && !CardOrToken && KeyGrip is not null && !Repeat;
 
+  [GeneratedRegex("^(?:[nsu]/)?(?<grip>[0-9a-fA-F]{40})$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+    REGEX_TIMEOUT_MILLISECONDS)]
+  private static partial Regex KeyGripRegex { get; }
+
+  [GeneratedRegex(@"\bID (?<id>[0-9a-fA-F]{16})\b", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+    REGEX_TIMEOUT_MILLISECONDS)]
+  private static partial Regex KeyIdRegex { get; }
+
   public void SetKeyInfo(string value) {
     KeyGrip = null;
-    _keyInfoCleared = value == "--clear";
+    _keyInfoCleared = string.Equals(value, "--clear", StringComparison.Ordinal);
     if (_keyInfoCleared) {
       return;
     }
 
-    var match = KeyGripRegex().Match(value);
+    var match = KeyGripRegex.Match(value);
     if (match.Success) {
-      KeyGrip = match.Groups[1].Value.ToUpperInvariant();
+      KeyGrip = match.Groups["grip"].Value.ToUpperInvariant();
     }
   }
 
@@ -65,8 +79,8 @@ public sealed partial class PinentrySessionState(string origin,
                        value.Contains("Holder:", StringComparison.OrdinalIgnoreCase) ||
                        value.Contains("Number:", StringComparison.OrdinalIgnoreCase);
 
-    var match = KeyIdRegex().Match(value);
-    CacheUser = match.Success ? match.Groups[1].Value : string.Empty;
+    var match = KeyIdRegex.Match(value);
+    CacheUser = match.Success ? match.Groups["id"].Value : string.Empty;
   }
 
   public void ResetTransient() {
@@ -81,16 +95,11 @@ public sealed partial class PinentrySessionState(string origin,
     RepeatError = "Passphrases do not match. Please try again.";
     CacheUser = string.Empty;
     KeyGrip = null;
+    LastCachedGrip = null;
     _cardDescription = false;
     _keyInfoCleared = false;
     AllowExternalCache = false;
     Repeat = false;
     TimeoutSeconds = 0;
   }
-
-  [GeneratedRegex("^(?:[nsu]/)?([0-9a-fA-F]{40})$", RegexOptions.CultureInvariant)]
-  private static partial Regex KeyGripRegex();
-
-  [GeneratedRegex(@"\bID ([0-9a-fA-F]{16})\b", RegexOptions.CultureInvariant)]
-  private static partial Regex KeyIdRegex();
 }

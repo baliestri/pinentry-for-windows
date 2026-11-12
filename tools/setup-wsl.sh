@@ -10,6 +10,8 @@ activate=false
 replace=false
 uninstall=false
 revoked_on_windows=false
+renew=false
+replace_broker=false
 
 while (($#)); do
   case "$1" in
@@ -17,6 +19,8 @@ while (($#)); do
       broker_certificate="${2:?missing certificate path}"
       shift 2 ;;
     --activate) activate=true; shift ;;
+    --renew) renew=true; shift ;;
+    --replace-broker) replace_broker=true; shift ;;
     --replace) replace=true; shift ;;
     --uninstall) uninstall=true; shift ;;
     --revoked-on-windows) revoked_on_windows=true; shift ;;
@@ -26,6 +30,16 @@ done
 
 if "$revoked_on_windows" && ! "$uninstall"; then
   printf '%s\n' '--revoked-on-windows requires --uninstall.' >&2
+  exit 2
+fi
+
+if "$replace_broker" && [[ -z "$broker_certificate" ]]; then
+  printf '%s\n' '--replace-broker requires --broker-certificate.' >&2
+  exit 2
+fi
+
+if "$uninstall" && { "$renew" || "$replace_broker"; }; then
+  printf '%s\n' '--renew and --replace-broker cannot be combined with --uninstall.' >&2
   exit 2
 fi
 
@@ -99,10 +113,17 @@ install -d -m 700 "$bin_dir"
 install -m 755 "${temporary}/${asset}" "$installed"
 if [[ ! -f "${config_dir}/client.pfx" ]]; then
   "$installed" --init "$config_dir"
+elif "$renew"; then
+  "$installed" --renew "$config_dir"
+  printf 'Relay certificate renewed. Pair it again on Windows with -ReplacePairing before the next use.\n'
 fi
 
 if [[ -n "$broker_certificate" ]]; then
-  "$installed" --trust-broker "$config_dir" "$broker_certificate"
+  if "$replace_broker"; then
+    "$installed" --trust-broker "$config_dir" "$broker_certificate" --replace
+  else
+    "$installed" --trust-broker "$config_dir" "$broker_certificate"
+  fi
 fi
 
 printf 'Relay installed at: %s\n' "$installed"
