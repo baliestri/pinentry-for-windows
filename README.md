@@ -213,16 +213,16 @@ To remove the optional persistent cache credential and all its entries, run:
 
 ## Troubleshooting
 
-| What you see                     | What to check                                                                                                                                                                                                            |
-|:---------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| No prompt on Windows             | Run `pfw.exe --check` using your installed path, check the Windows `gpg-agent.conf`, then restart that agent with `gpgconf --kill gpg-agent`.                                                                            |
-| No WSL prompt                    | Start the broker in your Windows session, confirm the one-time Hyper-V service registration and WSL certificate pairing, and activate the relay in that distribution. Restart its agent with `gpgconf --kill gpg-agent`. |
-| Relay refuses its private key    | Keep `~/.config/PinentryForWindows/relay` on the **Linux** filesystem, not under `/mnt/c`; its directory needs `0700` and its private key `0600`.                                                                        |
-| No **Remember me** box           | Card PINs and requests without external-cache permission or a stable software-key identity are not eligible. Normal passphrase entry still works.                                                                        |
-| Hello cancelled or not available | Type the passphrase normally. `--check` reports prerequisites but does not prove that a PRF assertion succeeds on this device.                                                                                           |
-| Second signature shows no window | `gpg-agent` may already have the passphrase in its own short-lived cache; it did not necessarily access the persistent cache.                                                                                            |
-| Bridge reports an expired certificate | Bridge certificates last one year. Follow [Renew the bridge certificates](#add-a-wsl2-distribution); `pfw.exe --check` shows the dates.                                                                             |
-| **Remember me** no longer saves  | The Windows Hello passkey was probably removed. Run `pfw.exe --clear-cache` to drop the unusable entries; the next saved passphrase creates a new passkey.                                                               |
+| What you see                          | What to check                                                                                                                                                                                                            |
+|:--------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| No prompt on Windows                  | Run `pfw.exe --check` using your installed path, check the Windows `gpg-agent.conf`, then restart that agent with `gpgconf --kill gpg-agent`.                                                                            |
+| No WSL prompt                         | Start the broker in your Windows session, confirm the one-time Hyper-V service registration and WSL certificate pairing, and activate the relay in that distribution. Restart its agent with `gpgconf --kill gpg-agent`. |
+| Relay refuses its private key         | Keep `~/.config/PinentryForWindows/relay` on the **Linux** filesystem, not under `/mnt/c`; its directory needs `0700` and its private key `0600`.                                                                        |
+| No **Remember me** box                | Card PINs and requests without external-cache permission or a stable software-key identity are not eligible. Normal passphrase entry still works.                                                                        |
+| Hello cancelled or not available      | Type the passphrase normally. `--check` reports prerequisites but does not prove that a PRF assertion succeeds on this device.                                                                                           |
+| Second signature shows no window      | `gpg-agent` may already have the passphrase in its own short-lived cache; it did not necessarily access the persistent cache.                                                                                            |
+| Bridge reports an expired certificate | Bridge certificates last one year. Follow [Renew the bridge certificates](#add-a-wsl2-distribution); `pfw.exe --check` shows the dates.                                                                                  |
+| **Remember me** no longer saves       | The Windows Hello passkey was probably removed. Run `pfw.exe --clear-cache` to drop the unusable entries; the next saved passphrase creates a new passkey.                                                               |
 
 Set `PFW_VERBOSE=1` before starting the affected pinentry, broker, or relay for fixed-category diagnostics on stderr.
 Windows and WSL each read their **own** environment; restart the corresponding `gpg-agent` after changing it. Extra
@@ -296,15 +296,15 @@ The Windows binary accepts these commands (paths are local to Windows):
 
 `--ui-helper` is an internal, per-prompt process mode; it is not a user command. The Linux binary accepts:
 
-| Invocation                                                | Purpose                                                            |
-|-----------------------------------------------------------|--------------------------------------------------------------------|
-| `pfw-relay`                                               | Serve the WSL pinentry using `~/.config/PinentryForWindows/relay`. |
-| `pfw-relay --run <relay-directory>`                       | Serve using an explicit relay identity directory.                  |
-| `pfw-relay --init <relay-directory>`                      | Create the client key and public `client.cer`.                     |
-| `pfw-relay --renew <relay-directory>`                     | Replace the client key and certificate, keeping the broker pin.    |
-| `pfw-relay --trust-broker <relay-directory> <broker.cer>` | Pin the Windows broker's public certificate.                       |
-| `pfw-relay --trust-broker <relay-directory> <broker.cer> --replace` | Replace the pinned broker certificate after a broker renewal. |
-| `pfw-relay --remove-identity <relay-directory>`           | Remove the local client identity and pinned broker certificate.    |
+| Invocation                                                          | Purpose                                                            |
+|---------------------------------------------------------------------|--------------------------------------------------------------------|
+| `pfw-relay`                                                         | Serve the WSL pinentry using `~/.config/PinentryForWindows/relay`. |
+| `pfw-relay --run <relay-directory>`                                 | Serve using an explicit relay identity directory.                  |
+| `pfw-relay --init <relay-directory>`                                | Create the client key and public `client.cer`.                     |
+| `pfw-relay --renew <relay-directory>`                               | Replace the client key and certificate, keeping the broker pin.    |
+| `pfw-relay --trust-broker <relay-directory> <broker.cer>`           | Pin the Windows broker's public certificate.                       |
+| `pfw-relay --trust-broker <relay-directory> <broker.cer> --replace` | Replace the pinned broker certificate after a broker renewal.      |
+| `pfw-relay --remove-identity <relay-directory>`                     | Remove the local client identity and pinned broker certificate.    |
 
 For opt-in diagnostics, set `PFW_VERBOSE=1` **before starting** the Windows pinentry/broker or the WSL relay. Each side
 reads its own environment; setting the variable in Windows does not turn it on inside WSL. If `gpg-agent` was already
@@ -383,12 +383,15 @@ reject any verification you did not expect.
 Recognized `OPTION` values are `allow-external-password-cache`, `default-ok`, `default-cancel`, `default-notok`, and
 `default-prompt`. `grab`, `no-grab`, and unknown options are accepted without changing the Windows credential window.
 The relay forwards Assuan bytes without interpreting them; diagnostics never enter protocol stdout.
-Local Windows sessions decode dialog text as UTF-8 first, then fall back to the active Windows ANSI code page for localized GnuPG labels. This supports agents that mix UTF-8 key descriptions with native-encoded prompts. WSL broker sessions keep UTF-8 decoding, and key identifiers never use the text fallback.
+Local Windows sessions decode dialog text as UTF-8 first, then fall back to the active Windows ANSI code page for
+localized GnuPG labels. This supports agents that mix UTF-8 key descriptions with native-encoded prompts. WSL broker
+sessions keep UTF-8 decoding, and key identifiers never use the text fallback.
 
 `SETKEYINFO --clear` disables cache eligibility for the current card/token request. A key with a stable 40-hex-digit
 grip, optionally prefixed by `n/`, `s/`, or `u/`, may be eligible for software-key caching. `SETERROR` suppresses one
 cache read so a rejected passphrase is not immediately reused, and removes the entry it was read from. A passphrase
-too long for the secret limit returns a "too large" error instead of a partial value. Successful repeat-passphrase input sends
+too long for the secret limit returns a "too large" error instead of a partial value. Successful repeat-passphrase input
+sends
 `S PIN_REPEATED`; a successful Hello-protected cache read sends `S PASSWORD_FROM_CACHE`. Responses use Assuan's bounded
 binary-safe data escaping, and cancellation, timeout, and repeat mismatch return protocol errors rather than a partial
 password.
