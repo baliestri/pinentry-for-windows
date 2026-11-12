@@ -8,7 +8,7 @@ using AssuanLibrary.Server;
 namespace PinentryForWindows.Core.Protocol;
 
 internal static class WireText {
-  private static readonly UTF8Encoding _strictUtf8 = new(false, true);
+  private readonly static UTF8Encoding _strictUtf8 = new(false, true);
 
   public static string Decode(ReadOnlyMemory<byte> raw, Encoding? fallbackEncoding = null) {
     var bytes = raw.ToArray();

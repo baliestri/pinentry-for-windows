@@ -5,7 +5,8 @@ namespace PinentryForWindows.Cache;
 
 internal static class PinentryPaths {
   public static string DataDirectory {
-    get {
+    get
+    {
       var configured = Environment.GetEnvironmentVariable("PFW_DATA_DIR");
       return string.IsNullOrWhiteSpace(configured)
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PinentryForWindows")

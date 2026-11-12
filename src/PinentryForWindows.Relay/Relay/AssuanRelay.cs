@@ -105,8 +105,8 @@ internal static class AssuanRelay {
           return;
         }
 
-        if ((!line.SequenceEqual("OK"u8) && !line.StartsWith("OK "u8) &&
-             !line.SequenceEqual("ERR"u8) && !line.StartsWith("ERR "u8)) ||
+        if (!line.SequenceEqual("OK"u8) && !line.StartsWith("OK "u8) &&
+            !line.SequenceEqual("ERR"u8) && !line.StartsWith("ERR "u8) ||
             _pending <= 0) {
           return;
         }

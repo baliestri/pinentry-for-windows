@@ -1,6 +1,7 @@
 // Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
 // See the LICENSE file in the repository root for full license text.
 
+using System.Globalization;
 using System.Text;
 using AssuanLibrary.Server;
 using PinentryForWindows.Core.Protocol;
@@ -18,7 +19,7 @@ internal sealed class GetInfoCommand : ICommandHandler<PinentrySessionState> {
     var key = WireText.Require(context.Arguments);
     var value = key switch {
       "version" => context.State.ProductVersion,
-      "pid" => Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+      "pid" => Environment.ProcessId.ToString(CultureInfo.InvariantCulture),
       "flavor" => "pinentry-for-windows",
       "ttyinfo" => "CONOUT$ w32",
       var _ => throw HandlerException.Remote(67109144, "unknown value")

@@ -141,17 +141,18 @@ internal static unsafe partial class NativeCredentialPrompt {
 
   [LibraryImport("credui.dll", EntryPoint = "CredUIPromptForWindowsCredentialsW")]
   private static partial uint CredUiPromptForWindowsCredentialsW(ref CredUiInfo info, uint authError,
-  ref uint authPackage, IntPtr input, uint inputSize, out IntPtr output, out uint outputSize, ref int save, uint flags);
+    ref uint authPackage, IntPtr input, uint inputSize, out IntPtr output, out uint outputSize, ref int save,
+    uint flags);
 
   [LibraryImport("credui.dll", EntryPoint = "CredPackAuthenticationBufferW", SetLastError = true)]
   [return: MarshalAs(UnmanagedType.Bool)]
   private static unsafe partial bool CredPackAuthenticationBufferW(uint flags, char* user, char* password, byte* output,
-  ref uint outputSize);
+    ref uint outputSize);
 
   [LibraryImport("credui.dll", EntryPoint = "CredUnPackAuthenticationBufferW", SetLastError = true)]
   [return: MarshalAs(UnmanagedType.Bool)]
   private static unsafe partial bool CredUnPackAuthenticationBufferW(uint flags, IntPtr input, uint inputSize,
-  char* user, ref uint userLength, char* domain, ref uint domainLength, char* password, ref uint passwordLength);
+    char* user, ref uint userLength, char* domain, ref uint domainLength, char* password, ref uint passwordLength);
 
   [StructLayout(LayoutKind.Sequential)]
   private struct CredUiInfo {

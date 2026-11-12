@@ -13,8 +13,8 @@ namespace PinentryForWindows.Cache;
 
 internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) : IPinentryCache {
   private const int MAX_SECRET = 4096;
-  private static readonly byte[] _magic = "PFW3"u8.ToArray();
-  private static readonly TimeSpan _lockBudget = TimeSpan.FromSeconds(10);
+  private readonly static byte[] _magic = "PFW3"u8.ToArray();
+  private readonly static TimeSpan _lockBudget = TimeSpan.FromSeconds(10);
   private string CredentialPath => Path.Combine(directory, "hello.cred");
   private string EntriesPath => Path.Combine(directory, "entries");
   public bool IsAvailable => provider.IsAvailable;
@@ -58,51 +58,6 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
 
     try { return Open(encoded, length, prf, Context(origin, key)); }
     finally { CryptographicOperations.ZeroMemory(prf); }
-  }
-
-  private static SecretBuffer? Open(byte[] encoded, int length, byte[] prf, byte[] context) {
-    var clear = new byte[length];
-    var derived = new byte[32];
-    try {
-      HKDF.DeriveKey(HashAlgorithmName.SHA256, prf, derived, encoded.AsSpan(4, 32), context);
-      using var aes = new AesGcm(derived, 16);
-      aes.Decrypt(encoded.AsSpan(36, 12), encoded.AsSpan(66), encoded.AsSpan(48, 16), clear, context);
-      var result = new SecretBuffer(MAX_SECRET);
-      result.Append(clear);
-      VerboseLog.Write(VerboseEvent.CacheHit);
-      return result;
-    }
-    catch (CryptographicException) {
-      VerboseLog.Write(VerboseEvent.CacheInvalid);
-      return null;
-    }
-    finally {
-      CryptographicOperations.ZeroMemory(derived);
-      CryptographicOperations.ZeroMemory(clear);
-    }
-  }
-
-  private static byte[] Seal(ReadOnlySpan<byte> secret, byte[] prf, byte[] salt, byte[] context) {
-    var nonce = RandomNumberGenerator.GetBytes(12);
-    var tag = new byte[16];
-    var ciphertext = new byte[secret.Length];
-    var derived = new byte[32];
-    try {
-      HKDF.DeriveKey(HashAlgorithmName.SHA256, prf, derived, salt, context);
-      using (var aes = new AesGcm(derived, 16)) {
-        aes.Encrypt(nonce, secret, ciphertext, tag, context);
-      }
-    }
-    finally { CryptographicOperations.ZeroMemory(derived); }
-
-    var envelope = new byte[66 + ciphertext.Length];
-    _magic.CopyTo(envelope, 0);
-    salt.CopyTo(envelope, 4);
-    nonce.CopyTo(envelope, 36);
-    tag.CopyTo(envelope, 48);
-    BinaryPrimitives.WriteUInt16LittleEndian(envelope.AsSpan(64), checked((ushort)ciphertext.Length));
-    ciphertext.CopyTo(envelope, 66);
-    return envelope;
   }
 
   public async ValueTask WriteAsync(string origin, string key, ReadOnlyMemory<byte> secret, CancellationToken ct) {
@@ -178,6 +133,50 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
     }
   }
 
+  private static SecretBuffer? Open(byte[] encoded, int length, byte[] prf, byte[] context) {
+    var clear = new byte[length];
+    var derived = new byte[32];
+    try {
+      HKDF.DeriveKey(HashAlgorithmName.SHA256, prf, derived, encoded.AsSpan(4, 32), context);
+      using var aes = new AesGcm(derived, 16);
+      aes.Decrypt(encoded.AsSpan(36, 12), encoded.AsSpan(66), encoded.AsSpan(48, 16), clear, context);
+      var result = new SecretBuffer(MAX_SECRET);
+      result.Append(clear);
+      VerboseLog.Write(VerboseEvent.CacheHit);
+      return result;
+    }
+    catch (CryptographicException) {
+      VerboseLog.Write(VerboseEvent.CacheInvalid);
+      return null;
+    }
+    finally {
+      CryptographicOperations.ZeroMemory(derived);
+      CryptographicOperations.ZeroMemory(clear);
+    }
+  }
+
+  private static byte[] Seal(ReadOnlySpan<byte> secret, byte[] prf, byte[] salt, byte[] context) {
+    var nonce = RandomNumberGenerator.GetBytes(12);
+    var tag = new byte[16];
+    var ciphertext = new byte[secret.Length];
+    var derived = new byte[32];
+    try {
+      HKDF.DeriveKey(HashAlgorithmName.SHA256, prf, derived, salt, context);
+      using var aes = new AesGcm(derived, 16);
+      aes.Encrypt(nonce, secret, ciphertext, tag, context);
+    }
+    finally { CryptographicOperations.ZeroMemory(derived); }
+
+    var envelope = new byte[66 + ciphertext.Length];
+    _magic.CopyTo(envelope, 0);
+    salt.CopyTo(envelope, 4);
+    nonce.CopyTo(envelope, 36);
+    tag.CopyTo(envelope, 48);
+    BinaryPrimitives.WriteUInt16LittleEndian(envelope.AsSpan(64), checked((ushort)ciphertext.Length));
+    ciphertext.CopyTo(envelope, 66);
+    return envelope;
+  }
+
   /// <summary>
   ///   Removes every local cache file. Returns <see langword="false" /> when the Windows Hello credential
   ///   could not be deleted, which leaves an unusable passkey for the user to remove from Windows settings.
@@ -202,9 +201,7 @@ internal sealed class WindowsPrfCache(string directory, IPrfProvider provider) :
     }
 
     if (Directory.Exists(EntriesPath)) {
-      foreach (var path in Directory.EnumerateFiles(EntriesPath, "*.bin")) {
-        File.Delete(path);
-      }
+      foreach (var path in Directory.EnumerateFiles(EntriesPath, "*.bin")) File.Delete(path);
     }
 
     return credentialRemoved;

@@ -1,6 +1,7 @@
 // Copyright (c) Bruno Sales <me@baliestri.dev>. Licensed under the MIT License.
 // See the LICENSE file in the repository root for full license text.
 
+using System.Globalization;
 using AssuanLibrary.Server;
 using PinentryForWindows.Core.Protocol;
 
@@ -53,7 +54,7 @@ internal sealed class StateCommand(string name) : ICommandHandler<PinentrySessio
         state.NotOkLabel = value.Replace('_', '&');
         break;
       case "SETTIMEOUT":
-        if (int.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, out var seconds) &&
+        if (int.TryParse(value, CultureInfo.InvariantCulture, out var seconds) &&
             seconds is >= 0 and <= 300) {
           state.TimeoutSeconds = seconds;
         }

@@ -10,16 +10,17 @@ using PinentryForWindows.Core.Contracts;
 namespace PinentryForWindows.Core.Protocol;
 
 public static class PinentryProtocol {
-  private static readonly CommandRegistry<PinentrySessionState> _registry = CreateRegistry();
-  private static readonly PinentryHooks _hooks = new();
-  private static readonly ServerOptions _options = new(commandTimeout: TimeSpan.FromMinutes(5));
+  private readonly static CommandRegistry<PinentrySessionState> _registry = CreateRegistry();
+  private readonly static PinentryHooks _hooks = new();
+  private readonly static ServerOptions _options = new(commandTimeout: TimeSpan.FromMinutes(5));
 
   public static async Task RunAsync(Stream stream, string origin, bool authenticated, IPinentryUi ui,
-  IPinentryCache cache, CancellationToken ct, string? productVersion = null, Encoding? textFallbackEncoding = null) {
+    IPinentryCache cache, CancellationToken ct, string? productVersion = null, Encoding? textFallbackEncoding = null) {
     ArgumentNullException.ThrowIfNull(stream);
     ArgumentException.ThrowIfNullOrWhiteSpace(origin);
     var state = new PinentrySessionState(origin, authenticated, ui, cache,
-      productVersion ?? typeof(PinentryProtocol).Assembly.GetName().Version?.ToString() ?? "unknown", textFallbackEncoding);
+      productVersion ?? typeof(PinentryProtocol).Assembly.GetName().Version?.ToString() ?? "unknown",
+      textFallbackEncoding);
     state.ResetTransient();
     var session = new ServerSession<PinentrySessionState>(
       new AcceptedConnection(stream), state, _registry, _hooks, _options);
@@ -32,9 +33,8 @@ public static class PinentryProtocol {
     foreach (var name in new[] {
                "SETTITLE", "SETDESC", "SETPROMPT", "SETERROR", "SETKEYINFO", "SETREPEAT",
                "SETREPEATERROR", "SETOK", "SETCANCEL", "SETNOTOK", "SETTIMEOUT"
-             }) {
+             })
       registry.Register(new StateCommand(name));
-    }
 
     registry.Register(new GetPinCommand());
     registry.Register(new GetInfoCommand());
@@ -52,7 +52,7 @@ public static class PinentryProtocol {
         : ValueTask.FromException(HandlerException.Remote(55, "authentication required"));
 
     public ValueTask OptionAsync(OptionRequest request, CommandContext<PinentrySessionState> context,
-    CancellationToken ct) {
+      CancellationToken ct) {
       var name = Encoding.ASCII.GetString(request.Name.Span);
       var raw = request.Value ?? ReadOnlyMemory<byte>.Empty;
       switch (name) {

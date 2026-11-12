@@ -18,7 +18,8 @@ public sealed class VsockConnectorTests {
 
     using var cancelled = new CancellationTokenSource(TimeSpan.FromSeconds(1));
     var elapsed = Stopwatch.StartNew();
-    var error = Record.Exception(() => {
+    var error = Record.Exception(() =>
+    {
       using var socket = VsockConnector.Connect(44987, TimeSpan.FromMilliseconds(500), cancelled.Token);
     });
 

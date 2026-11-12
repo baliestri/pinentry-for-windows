@@ -11,7 +11,8 @@ namespace PinentryForWindows.Ui;
 internal sealed class UiCoordinator : IPinentryUi {
   public ValueTask<PasswordPromptResult?> PromptAsync(PromptRequest request, CancellationToken ct) {
     VerboseLog.Write(VerboseEvent.PromptQueued);
-    var task = Task.Run(() => {
+    var task = Task.Run(() =>
+    {
       using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
       if (request.TimeoutSeconds > 0) {
         deadline.CancelAfter(TimeSpan.FromSeconds(request.TimeoutSeconds));
@@ -66,7 +67,8 @@ internal sealed class UiCoordinator : IPinentryUi {
     using var childOwner = child;
     VerboseLog.Write(VerboseEvent.HelperStarted);
 
-    using var registration = ct.Register(() => {
+    using var registration = ct.Register(() =>
+    {
       try {
         if (!child.HasExited) {
           child.Kill(true);

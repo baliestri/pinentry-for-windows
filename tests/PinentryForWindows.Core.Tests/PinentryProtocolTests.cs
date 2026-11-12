@@ -274,7 +274,8 @@ public sealed class PinentryProtocolTests {
   [InlineData(932, "パスワード:")]
   public async Task Localized_prompts_use_the_configured_native_code_page(int codePage, string prompt) {
     Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-    var nativeEncoding = Encoding.GetEncoding(codePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+    var nativeEncoding =
+      Encoding.GetEncoding(codePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
     var ui = new FakeUi("typed", false);
     var commands = nativeEncoding.GetBytes($"OPTION default-prompt={prompt}\nGETPIN\nBYE\n");
     var output = await RunAsync(commands, ui, new FakeCache(), textFallbackEncoding: nativeEncoding);
@@ -288,7 +289,8 @@ public sealed class PinentryProtocolTests {
   [InlineData("SETPROMPT Phrase secr%E8te%A0:", "Phrase secrète\u00a0:")]
   public async Task Native_prompt_decoding_handles_raw_and_percent_escaped_bytes(string command, string expected) {
     var ui = new FakeUi("typed", false);
-    var output = await RunAsync(Encoding.Latin1.GetBytes(command + "\nGETPIN\nBYE\n"), ui, new FakeCache(), textFallbackEncoding: Encoding.Latin1);
+    var output = await RunAsync(Encoding.Latin1.GetBytes(command + "\nGETPIN\nBYE\n"), ui, new FakeCache(),
+      textFallbackEncoding: Encoding.Latin1);
 
     Assert.DoesNotContain("ERR", output);
     Assert.Equal(expected, ui.LastPromptLabel);
@@ -297,7 +299,8 @@ public sealed class PinentryProtocolTests {
   [Fact]
   public async Task Valid_utf8_prompt_takes_precedence_over_native_fallback() {
     var ui = new FakeUi("typed", false);
-    var output = await RunAsync(Encoding.UTF8.GetBytes("SETPROMPT Phrase secrète\u00a0: 🔑\nGETPIN\nBYE\n"), ui, new FakeCache(), textFallbackEncoding: Encoding.Latin1);
+    var output = await RunAsync(Encoding.UTF8.GetBytes("SETPROMPT Phrase secrète\u00a0: 🔑\nGETPIN\nBYE\n"), ui,
+      new FakeCache(), textFallbackEncoding: Encoding.Latin1);
 
     Assert.DoesNotContain("ERR", output);
     Assert.Equal("Phrase secrète\u00a0: 🔑", ui.LastPromptLabel);
@@ -305,14 +308,17 @@ public sealed class PinentryProtocolTests {
 
   [Fact]
   public async Task Unused_localized_options_are_ignored_without_decoding_their_values() {
-    var output = await RunAsync(Encoding.Latin1.GetBytes("OPTION default-tt-visi=Rendre la phrase secrète visible\nBYE\n"), new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
+    var output =
+      await RunAsync(Encoding.Latin1.GetBytes("OPTION default-tt-visi=Rendre la phrase secrète visible\nBYE\n"),
+        new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
 
     Assert.DoesNotContain("ERR", output);
   }
 
   [Fact]
   public async Task Sessions_without_native_fallback_reject_non_utf8_text() {
-    var output = await RunAsync(Encoding.Latin1.GetBytes("SETPROMPT Phrase secrète\nBYE\n"), new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
+    var output = await RunAsync(Encoding.Latin1.GetBytes("SETPROMPT Phrase secrète\nBYE\n"),
+      new FakeUi("unused", false), new FakeCache(), "wsl:archlinux");
 
     Assert.Contains("ERR 67109144 invalid value", output);
   }
@@ -324,18 +330,20 @@ public sealed class PinentryProtocolTests {
   [InlineData("SETTIMEOUT %E8")]
   [InlineData("CLEARPASSPHRASE %E8")]
   public async Task Native_text_fallback_preserves_escape_and_identifier_validation(string command) {
-    var output = await RunAsync(Encoding.ASCII.GetBytes(command + "\nBYE\n"), new FakeUi("unused", false), new FakeCache(), textFallbackEncoding: Encoding.Latin1);
+    var output = await RunAsync(Encoding.ASCII.GetBytes(command + "\nBYE\n"), new FakeUi("unused", false),
+      new FakeCache(), textFallbackEncoding: Encoding.Latin1);
 
     Assert.Contains("ERR 67109144", output);
   }
 
   private static async Task<string> RunAsync(string commands, FakeUi ui, FakeCache cache, string origin = "windows",
-  Action? beforeSecondPrompt = null) {
+    Action? beforeSecondPrompt = null) {
     ui.BeforeSecondPrompt = beforeSecondPrompt;
     return await RunAsync(Encoding.UTF8.GetBytes(commands), ui, cache, origin).ConfigureAwait(false);
   }
 
-  private static async Task<string> RunAsync(byte[] commands, FakeUi ui, FakeCache cache, string origin = "windows", Encoding? textFallbackEncoding = null) {
+  private static async Task<string> RunAsync(byte[] commands, FakeUi ui, FakeCache cache, string origin = "windows",
+    Encoding? textFallbackEncoding = null) {
     var stream = new ScriptedStream(commands);
     await using var streamScope = stream.ConfigureAwait(false);
     await PinentryProtocol.RunAsync(stream, origin, true, ui, cache, CancellationToken.None,

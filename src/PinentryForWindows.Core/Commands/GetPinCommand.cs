@@ -66,7 +66,7 @@ internal sealed class GetPinCommand : ICommandHandler<PinentrySessionState> {
   }
 
   private static async ValueTask<bool> TryAnswerFromCacheAsync(CommandContext<PinentrySessionState> context,
-  CancellationToken ct) {
+    CancellationToken ct) {
     var state = context.State;
     if (!state.CacheEligible) {
       return false;
@@ -92,7 +92,7 @@ internal sealed class GetPinCommand : ICommandHandler<PinentrySessionState> {
   }
 
   private static async ValueTask ConfirmRepeatAsync(CommandContext<PinentrySessionState> context,
-  PromptRequest request, PasswordPromptResult first, CancellationToken ct) {
+    PromptRequest request, PasswordPromptResult first, CancellationToken ct) {
     var state = context.State;
     var repeatRequest = request with {
       Description = state.RepeatDescription, OfferSave = false,
@@ -113,14 +113,14 @@ internal sealed class GetPinCommand : ICommandHandler<PinentrySessionState> {
   }
 
   private static async ValueTask SendSecretAsync(CommandContext<PinentrySessionState> context, SecretBuffer secret,
-  CancellationToken ct) {
+    CancellationToken ct) {
     var bytes = secret.Expose().ToArray();
     try { await context.SendDataAsync(bytes, ct).ConfigureAwait(false); }
     finally { CryptographicOperations.ZeroMemory(bytes); }
   }
 
   private static async ValueTask<PasswordPromptResult?> PromptAsync(IPinentryUi ui, PromptRequest request,
-  CancellationToken ct) {
+    CancellationToken ct) {
     try { return await ui.PromptAsync(request, ct).ConfigureAwait(false); }
     catch (TimeoutException) { throw HandlerException.Remote(83886142, "timeout"); }
     catch (SecretTooLongException) { throw HandlerException.Remote(83886147, "passphrase too long"); }

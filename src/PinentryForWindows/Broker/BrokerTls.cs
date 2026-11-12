@@ -9,9 +9,10 @@ namespace PinentryForWindows.Broker;
 
 internal static class BrokerTls {
   public static async Task<AuthenticatedBrokerStream> AuthenticateAsync(Stream transport,
-  X509Certificate2 serverCertificate, BrokerIdentity identity, CancellationToken ct) {
+    X509Certificate2 serverCertificate, BrokerIdentity identity, CancellationToken ct) {
     string? origin = null;
-    var stream = new SslStream(transport, false, (_, certificate, _, _) => {
+    var stream = new SslStream(transport, false, (_, certificate, _, _) =>
+    {
       if (certificate is null) {
         return false;
       }

@@ -29,7 +29,7 @@ internal static class VmIdProvider {
   }
 
   private static async Task<string?> InvokeWslAsync(Encoding encoding, CancellationToken ct,
-  params string[] arguments) {
+    params string[] arguments) {
     // Never resolve wsl.exe through the application or current directory.
     var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "wsl.exe")) {
       UseShellExecute = false,
@@ -39,9 +39,7 @@ internal static class VmIdProvider {
       StandardOutputEncoding = encoding
     };
 
-    foreach (var argument in arguments) {
-      start.ArgumentList.Add(argument);
-    }
+    foreach (var argument in arguments) start.ArgumentList.Add(argument);
 
     Process? started;
     lock (ChildProcessGate.Sync) { started = Process.Start(start); }

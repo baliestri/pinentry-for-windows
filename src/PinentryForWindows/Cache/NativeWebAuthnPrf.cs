@@ -18,7 +18,7 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
   private const string CRED_PROTECT = "credProtect";
   private const string USER_NAME = "Pinentry for Windows";
   private const string DISPLAY_NAME = "Pinentry passphrase cache";
-  private static readonly Lazy<bool> _available = new(CheckAvailability);
+  private readonly static Lazy<bool> _available = new(CheckAvailability);
 
   public bool IsAvailable => _available.Value;
 
@@ -26,7 +26,7 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
     => new(Task.Run(() => Create(ct), ct));
 
   public ValueTask<byte[]> DeriveAsync(ReadOnlyMemory<byte> credentialId, ReadOnlyMemory<byte> salt,
-  CancellationToken ct)
+    CancellationToken ct)
     => new(Task.Run(() => Derive(credentialId.ToArray(), salt.ToArray(), ct), ct));
 
   public ValueTask DeleteCredentialAsync(ReadOnlyMemory<byte> credentialId, CancellationToken ct)
@@ -149,7 +149,9 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
       finally {
         if (assertion is not null) {
           var secret = assertion->pHmacSecret;
-          if (secret is not null && secret->pbFirst is not null && secret->cbFirst == 32) {
+          if (secret is not null &&
+              secret->pbFirst is not null &&
+              secret->cbFirst == 32) {
             CryptographicOperations.ZeroMemory(new Span<byte>(secret->pbFirst, 32));
           }
 
@@ -193,7 +195,8 @@ internal sealed class NativeWebAuthnPrf : IPrfProvider {
   }
 
   private static CancellationTokenRegistration RegisterCancellation(CancellationToken ct, Guid id)
-    => ct.Register(static state => {
+    => ct.Register(static state =>
+    {
       var cancellationId = (Guid)state!;
       _ = PInvoke.WebAuthNCancelCurrentOperation(in cancellationId);
     }, id);

@@ -16,7 +16,7 @@ public sealed class PinentryLatencyTests {
     try {
       var path = Path.Combine(directory, "latency.txt");
       var started = Stopwatch.GetTimestamp();
-      PinentryLatency.Record(path, started, started + (Stopwatch.Frequency / 10));
+      PinentryLatency.Record(path, started, started + Stopwatch.Frequency / 10);
 
       var line = File.ReadAllText(path).Trim();
       Assert.True(double.TryParse(line, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture,

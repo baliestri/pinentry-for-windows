@@ -67,6 +67,7 @@ public sealed class RelayForwardingTests {
     }
 
     public override void Flush() { }
+
     public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 
     public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) {
@@ -93,7 +94,8 @@ public sealed class RelayForwardingTests {
       => throw new NotSupportedException();
   }
 
-  private sealed class DelayedServer(string response = "D dummy%25secret\nOK\n",
+  private sealed class DelayedServer(
+    string response = "D dummy%25secret\nOK\n",
     string greeting = "OK ready\n",
     TimeSpan? greetingDelay = null) : Stream {
     private readonly TaskCompletionSource _command = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -126,7 +128,8 @@ public sealed class RelayForwardingTests {
           var greetingBytes = Encoding.UTF8.GetBytes(greeting);
           greetingBytes.CopyTo(buffer);
           return greetingBytes.Length;
-        case 2: {
+        case 2:
+        {
           await _command.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
           await Task.Delay(50, cancellationToken).ConfigureAwait(false);
           var bytes = Encoding.UTF8.GetBytes(response);

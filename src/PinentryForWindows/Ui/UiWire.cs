@@ -11,9 +11,9 @@ namespace PinentryForWindows.Ui;
 
 internal static class UiWire {
   private const int MAX_SECRET_BYTES = 4096;
-  private static readonly UTF8Encoding _strictUtf8 = new(false, true);
-  private static readonly byte[] _requestMagic = "PFW2"u8.ToArray();
-  private static readonly byte[] _resultMagic = "PFR1"u8.ToArray();
+  private readonly static UTF8Encoding _strictUtf8 = new(false, true);
+  private readonly static byte[] _requestMagic = "PFW2"u8.ToArray();
+  private readonly static byte[] _resultMagic = "PFR1"u8.ToArray();
 
   public static async ValueTask WriteRequestAsync(Stream stream, PromptRequest request, CancellationToken ct) {
     if (request.TimeoutSeconds is < 0 or > 300 ||
@@ -93,7 +93,7 @@ internal static class UiWire {
     => WriteResponseAsync(stream, 3, ReadOnlyMemory<byte>.Empty, false, ct);
 
   public static ValueTask WriteResultAsync(Stream stream, ReadOnlyMemory<byte> secret, bool remember,
-  CancellationToken ct)
+    CancellationToken ct)
     => WriteResponseAsync(stream, 1, secret, remember, ct);
 
   public static async ValueTask<PasswordPromptResult?> ReadResultAsync(Stream stream, CancellationToken ct) {
@@ -143,9 +143,9 @@ internal static class UiWire {
   }
 
   private static async ValueTask WriteResponseAsync(Stream stream, byte status, ReadOnlyMemory<byte> secret,
-  bool remember, CancellationToken ct) {
+    bool remember, CancellationToken ct) {
     if (secret.Length > MAX_SECRET_BYTES ||
-        (status != 1 && !secret.IsEmpty)) {
+        status != 1 && !secret.IsEmpty) {
       throw new ArgumentOutOfRangeException(nameof(secret));
     }
 

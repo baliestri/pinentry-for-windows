@@ -68,7 +68,7 @@ internal sealed partial class VsockStream(Socket socket) : Stream {
     => throw new NotSupportedException();
 
   private static unsafe int ReadNative(SafeSocketHandle handle, byte[] destination,
-  int offset, int count, CancellationToken ct) {
+    int offset, int count, CancellationToken ct) {
     if (count == 0) {
       return 0;
     }
@@ -92,7 +92,7 @@ internal sealed partial class VsockStream(Socket socket) : Stream {
   }
 
   private static unsafe void WriteNative(SafeSocketHandle handle, byte[] source,
-  int offset, int count, CancellationToken ct) {
+    int offset, int count, CancellationToken ct) {
     while (count > 0) {
       WaitFor(handle, POLLOUT, ct);
       nint written;

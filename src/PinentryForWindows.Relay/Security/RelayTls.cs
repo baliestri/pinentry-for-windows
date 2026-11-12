@@ -11,7 +11,7 @@ namespace PinentryForWindows.Relay.Security;
 [SupportedOSPlatform("linux")]
 internal static class RelayTls {
   public static async Task<SslStream> AuthenticateAsync(Stream transport, RelayIdentity identity,
-  X509Certificate2 clientCertificate, CancellationToken ct) {
+    X509Certificate2 clientCertificate, CancellationToken ct) {
     var stream = new SslStream(transport, false,
       (_, certificate, _, _) => certificate is not null && identity.IsTrustedBroker(certificate));
     try {

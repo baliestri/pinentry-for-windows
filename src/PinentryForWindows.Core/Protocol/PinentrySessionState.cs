@@ -7,7 +7,8 @@ using PinentryForWindows.Core.Contracts;
 
 namespace PinentryForWindows.Core.Protocol;
 
-public sealed partial class PinentrySessionState(string origin,
+public sealed partial class PinentrySessionState(
+  string origin,
   bool authenticated,
   IPinentryUi ui,
   IPinentryCache cache,
@@ -47,6 +48,14 @@ public sealed partial class PinentrySessionState(string origin,
 
   public bool CacheEligible
     => Cache.IsAvailable && AllowExternalCache && !CardOrToken && KeyGrip is not null && !Repeat;
+
+  [GeneratedRegex("^(?:[nsu]/)?(?<grip>[0-9a-fA-F]{40})$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+    REGEX_TIMEOUT_MILLISECONDS)]
+  private static partial Regex KeyGripRegex { get; }
+
+  [GeneratedRegex(@"\bID (?<id>[0-9a-fA-F]{16})\b", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
+    REGEX_TIMEOUT_MILLISECONDS)]
+  private static partial Regex KeyIdRegex { get; }
 
   public void SetKeyInfo(string value) {
     KeyGrip = null;
@@ -93,12 +102,4 @@ public sealed partial class PinentrySessionState(string origin,
     Repeat = false;
     TimeoutSeconds = 0;
   }
-
-  [GeneratedRegex("^(?:[nsu]/)?(?<grip>[0-9a-fA-F]{40})$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
-    REGEX_TIMEOUT_MILLISECONDS)]
-  private static partial Regex KeyGripRegex { get; }
-
-  [GeneratedRegex(@"\bID (?<id>[0-9a-fA-F]{16})\b", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture,
-    REGEX_TIMEOUT_MILLISECONDS)]
-  private static partial Regex KeyIdRegex { get; }
 }
