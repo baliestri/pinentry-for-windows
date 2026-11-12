@@ -329,7 +329,7 @@ requests a fresh Windows Hello verification. A protected platform WebAuthn crede
 key; entries are authenticated and encrypted with AES-GCM, partitioned by Windows/paired-WSL origin and key identity.
 `S PASSWORD_FROM_CACHE` is sent only after a successful Hello-protected retrieval.
 
-If Hello is cancelled, unavailable, or fails to return a usable PRF, the user enters the passphrase normally. There is
+If Hello is canceled, unavailable, or fails to return a usable PRF, the user enters the passphrase normally. There is
 no silent fallback to an independently decryptable DPAPI cache. `SETERROR` bypasses cache for the next attempt, and
 when it follows a passphrase this session served from the cache, that stale entry is removed; an error after typed
 input leaves the entry alone. `CLEARPASSPHRASE` removes the matching origin's entry. Old `pfwv2:` PasswordVault
@@ -409,7 +409,7 @@ pwsh -NoProfile -File tests/Test-InstallerConfig.ps1
 pwsh -NoProfile -File tests/Test-BridgeSetup.ps1
 ```
 
-The WSL installer has an isolated uninstall check that uses a disposable HOME and fake GnuPG executable:
+The WSL installer has an isolated uninstallation check that uses a disposable HOME and fake GnuPG executable:
 
 ```bash
 bash tests/Test-InstallerWsl.sh
@@ -453,7 +453,8 @@ are not Authenticode-signed yet:
 gh attestation verify pfw.x64.exe --repo baliestri/pinentry-for-windows
 ```
 
-Until a release contains the assets listed at the top of this README, the install scripts cannot download this rewrite.
+Until a release contains the assets listed at the top of this README, the installation scripts cannot download this
+rewrite.
 Use the published Windows `pfw.exe` with the [manual Windows configuration](#install-on-windows); for WSL, publish the
 relay in the distribution, run its `--init` and `--trust-broker` commands from
 the [CLI reference](#technical-reference),
@@ -468,7 +469,7 @@ project handles broker/cache/UI, and `PinentryForWindows.Relay` handles the Linu
 - [Ookii.VmSockets](https://github.com/SvenGroot/Ookii.VmSockets) by Sven Groot informed the minimal Hyper-V/VSock
   endpoint implementation. The NuGet package is **not** a runtime dependency.
   See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for its MIT notice.
-- [AssuanLibrary](https://github.com/baliestri/assuan-library) 2.0.0 supplies the Assuan protocol primitives and
+- [AssuanLibrary](https://github.com/baliestri/assuan-library) 2.0.1 supplies the Assuan protocol primitives and
   server-session API.
 
 Pinentry for Windows is licensed under the [zlib/libpng License](LICENSE.md).
