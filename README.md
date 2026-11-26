@@ -401,11 +401,17 @@ password.
 ## Verify a release
 
 Releases published after the provenance workflow change carry a build provenance attestation for each binary, in
-addition to `SHA256SUMS.txt`. Verify a downloaded file with the GitHub CLI; earlier releases have no attestation, and
-the binaries are not Authenticode-signed yet:
+addition to `SHA256SUMS.txt`. Verify a downloaded file with the GitHub CLI; earlier releases have no attestation:
 
 ```bash
 gh attestation verify pfw.x64.exe --repo baliestri/pinentry-for-windows
+```
+
+The release workflow also Authenticode-signs the two Windows executables. Releases published before that change are
+unsigned, and the Linux relays are never signed this way. Check the signature in PowerShell:
+
+```powershell
+Get-AuthenticodeSignature .\pfw.x64.exe | Format-List Status, SignerCertificate, TimeStamperCertificate
 ```
 
 ## Build from source
