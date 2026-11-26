@@ -123,102 +123,10 @@ jobs:
   sign:
     name: Sign Windows binaries
     needs: validate
-    runs-on: windows-latest
-    environment: release-signing
     permissions:
       contents: read
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - name: Download unsigned Windows x64 binary
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: pinentry-windows-x64
-          path: unsigned
-
-      - name: Download unsigned Windows ARM64 binary
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: pinentry-windows-arm64
-          path: unsigned
-
-      - name: Check the unsigned input set
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $expected = @('pfw.arm64.exe', 'pfw.x64.exe')
-          $actual = @(Get-ChildItem -LiteralPath unsigned -File | Sort-Object Name | ForEach-Object Name)
-          if (($actual -join ',') -cne ($expected -join ',')) {
-            throw "Unexpected input set: $($actual -join ', ')"
-          }
-          foreach ($name in $expected) {
-            $status = (Get-AuthenticodeSignature -LiteralPath (Join-Path unsigned $name)).Status
-            if ($status -ne 'NotSigned') { throw "$name is not an unsigned build output: $status" }
-          }
-          New-Item -ItemType Directory -Path signed -Force | Out-Null
-
-      - name: Scan and sign both binaries with one OTP
-        uses: SSLcom/esigner-codesign@cf5f6c1d38ad10f47e3ed9aca873f429b1a8d85b # v1.3.2
-        with:
-          command: batch_sign
-          username: ${{ secrets.ES_USERNAME }}
-          password: ${{ secrets.ES_PASSWORD }}
-          credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
-          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          dir_path: ${{ github.workspace }}/unsigned
-          output_path: ${{ github.workspace }}/signed
-          malware_block: true
-          environment_name: PROD
-          clean_logs: true
-
-      - name: Verify signatures, timestamps and publisher
-        env:
-          SIGNING_SUBJECT_CN: ${{ vars.SIGNING_SUBJECT_CN }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if ([string]::IsNullOrWhiteSpace($env:SIGNING_SUBJECT_CN)) {
-            throw 'SIGNING_SUBJECT_CN is not configured for this environment.'
-          }
-          $expected = @('pfw.arm64.exe', 'pfw.x64.exe')
-          $actual = @(Get-ChildItem -LiteralPath signed -File | Sort-Object Name | ForEach-Object Name)
-          if (($actual -join ',') -cne ($expected -join ',')) {
-            throw "Unexpected signed set: $($actual -join ', ')"
-          }
-          foreach ($name in $expected) {
-            $path = Join-Path signed $name
-            if ((Get-Item -LiteralPath $path).Length -le 0) { throw "$name is empty." }
-            $signature = Get-AuthenticodeSignature -LiteralPath $path
-            if ($signature.Status -ne 'Valid') { throw "$name signature is $($signature.Status)." }
-            if ($null -eq $signature.TimeStamperCertificate) { throw "$name has no trusted timestamp." }
-            $commonName = $signature.SignerCertificate.GetNameInfo(
-              [System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
-            if ($commonName -cne $env:SIGNING_SUBJECT_CN) { throw "$name was signed by an unexpected publisher." }
-            $before = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path (Join-Path unsigned $name))).FileVersion
-            $after = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $path)).FileVersion
-            if ($before -ne $after) { throw "$name file version changed while signing." }
-          }
-
-      - name: Smoke test the signed x64 binary
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $PSNativeCommandUseErrorActionPreference = $true
-          & (Join-Path signed 'pfw.x64.exe') --help | Out-Null
-
-      - name: Upload signed Windows x64 binary
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: pinentry-windows-x64-signed
-          path: signed/pfw.x64.exe
-          if-no-files-found: error
-          compression-level: 0
-
-      - name: Upload signed Windows ARM64 binary
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: pinentry-windows-arm64-signed
-          path: signed/pfw.arm64.exe
-          if-no-files-found: error
-          compression-level: 0
+    uses: ./.github/workflows/sign.yml
+    secrets: inherit
 
   promote:
     name: Promote tested commit to branches and tag
