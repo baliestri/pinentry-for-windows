@@ -25,6 +25,9 @@ Console.CancelKeyPress += (_, e) =>
 
 try {
   switch (args) {
+    case ["--version"]:
+      Console.WriteLine($"pfw {productVersion}");
+      return 0;
     case ["--init-broker", var _]:
     {
       var identity = new BrokerIdentity(args[1]);

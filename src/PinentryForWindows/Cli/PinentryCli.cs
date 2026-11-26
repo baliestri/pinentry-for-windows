@@ -82,6 +82,7 @@ internal static class PinentryCli {
     output.WriteLine("  --reset-broker <dir>    Remove broker pairing material");
     output.WriteLine("  --vm-id <distribution>  Find the running WSL VM");
     output.WriteLine("  --broker <dir>          Run the interactive Windows broker");
+    output.WriteLine("  --version               Show the pinentry version");
     output.WriteLine("  --help                  Show this help");
   }
 }

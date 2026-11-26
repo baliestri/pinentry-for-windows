@@ -1,5 +1,25 @@
 # Pinentry For Windows Changelog
 
+## [2.1.1](https://github.com/baliestri/pinentry-for-windows/compare/v2.1.0..v2.1.1) - 2026-11-26
+
+### ⛰️  Features
+
+- *(cli)* Add --version to pfw and pfw-relay - ([e62b088](https://github.com/baliestri/pinentry-for-windows/commit/e62b088a85d8b395b8e71f876479938b5406c826))
+
+### 🚜 Refactor
+
+- *(ci)* Move release signing into a reusable workflow - ([a8ad353](https://github.com/baliestri/pinentry-for-windows/commit/a8ad3536ade1e6f9bf60f29354cd9d4082d21567))
+
+### 📚 Documentation
+
+- Describe Authenticode signing of release binaries - ([b8fac42](https://github.com/baliestri/pinentry-for-windows/commit/b8fac428ae06333b180b50f6adfca86a5f69e57e))
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Sign Windows binaries with SSL.com eSigner - ([6e8025a](https://github.com/baliestri/pinentry-for-windows/commit/6e8025acc51d2c79ef1ab8ca92d7b90e23ee90e0))
+- *(validate)* Check the CLI version of published release binaries - ([8c287a5](https://github.com/baliestri/pinentry-for-windows/commit/8c287a5c319d0946dc4cc1fb2ade510d0b3aa73b))
+- Add a manual signing rehearsal workflow - ([8582fe8](https://github.com/baliestri/pinentry-for-windows/commit/8582fe87fce6040c0c937eda6599eb4935e4311b))
+
 ## [2.1.0](https://github.com/baliestri/pinentry-for-windows/compare/v2.0.1..v2.1.0) - 2026-11-12
 
 ### ⛰️  Features

@@ -120,9 +120,17 @@ jobs:
       release_tag: ${{ inputs.version }}
       upload_assets: true
 
+  sign:
+    name: Sign Windows binaries
+    needs: validate
+    permissions:
+      contents: read
+    uses: ./.github/workflows/sign.yml
+    secrets: inherit
+
   promote:
     name: Promote tested commit to branches and tag
-    needs: [prepare, validate]
+    needs: [prepare, validate, sign]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -200,16 +208,16 @@ jobs:
             exit 1
           }
 
-      - name: Download Windows x64 binary
+      - name: Download signed Windows x64 binary
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: pinentry-windows-x64
+          name: pinentry-windows-x64-signed
           path: dist
 
-      - name: Download Windows ARM64 binary
+      - name: Download signed Windows ARM64 binary
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: pinentry-windows-arm64
+          name: pinentry-windows-arm64-signed
           path: dist
 
       - name: Download Linux x64 relay
@@ -286,7 +294,7 @@ jobs:
 
   cleanup:
     name: Remove unchanged candidate branch
-    needs: [prepare, validate, promote, publish]
+    needs: [prepare, validate, sign, promote, publish]
     if: ${{ always() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:

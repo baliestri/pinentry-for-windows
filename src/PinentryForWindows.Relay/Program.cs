@@ -20,6 +20,9 @@ Console.CancelKeyPress += (_, e) =>
 try {
   VerboseLog.Write(VerboseEvent.CommandStarted);
   switch (args) {
+    case ["--version"]:
+      Console.WriteLine($"pfw-relay {typeof(RelayIdentity).Assembly.GetName().Version?.ToString() ?? "unknown"}");
+      return 0;
     case ["--init", var _]:
     {
       var identity = new RelayIdentity(args[1]);

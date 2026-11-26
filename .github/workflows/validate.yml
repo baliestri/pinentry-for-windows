@@ -90,6 +90,8 @@ jobs:
             $expectedVersion = "$env:RELEASE_VERSION.0"
             $actualVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion
             if ($actualVersion -ne $expectedVersion) { throw "Wrong release file version: $actualVersion" }
+            $cliVersion = & $exe --version
+            if ($cliVersion -cne "pfw $expectedVersion") { throw "Wrong release CLI version: $cliVersion" }
           }
 
           $start = [System.Diagnostics.ProcessStartInfo]::new($exe)
@@ -209,6 +211,12 @@ jobs:
           set -euo pipefail
           executable="$RUNNER_TEMP/publish-$RUNTIME/pfw-relay"
           test -x "$executable"
+          if [[ -n "${RELEASE_VERSION:-}" ]]; then
+            [[ "$("$executable" --version)" == "pfw-relay $RELEASE_VERSION.0" ]] || {
+              echo 'Wrong release relay CLI version.' >&2
+              exit 1
+            }
+          fi
           identity="$(mktemp -d)"
           trap 'rm -rf -- "$identity"' EXIT
           "$executable" --init "$identity"

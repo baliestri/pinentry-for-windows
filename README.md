@@ -281,6 +281,7 @@ The Windows binary accepts these commands (paths are local to Windows):
 | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `pfw.exe`                                                               | Serve one local Assuan pinentry session on stdin/stdout.                                             |
 | `pfw.exe --help` or `-h`                                                | Show command usage.                                                                                  |
+| `pfw.exe --version`                                                     | Print `pfw` and the four-part version, the same one `GETINFO version` reports.                       |
 | `pfw.exe --check`                                                       | Report local prerequisites and GnuPG configuration without enrolling a Hello credential.             |
 | `pfw.exe --clear-cache`                                                 | Remove the persistent cache credential and all entries from the current data directory.              |
 | `pfw.exe --clear-cache <40-hex-keygrip>`                                | Remove only the Windows-origin entry for a software key; `n/`, `s/`, and `u/` prefixes are accepted. |
@@ -300,6 +301,7 @@ The Windows binary accepts these commands (paths are local to Windows):
 | ------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `pfw-relay`                                                         | Serve the WSL pinentry using `~/.config/PinentryForWindows/relay`. |
 | `pfw-relay --run <relay-directory>`                                 | Serve using an explicit relay identity directory.                  |
+| `pfw-relay --version`                                               | Print `pfw-relay` and the four-part version.                       |
 | `pfw-relay --init <relay-directory>`                                | Create the client key and public `client.cer`.                     |
 | `pfw-relay --renew <relay-directory>`                               | Replace the client key and certificate, keeping the broker pin.    |
 | `pfw-relay --trust-broker <relay-directory> <broker.cer>`           | Pin the Windows broker's public certificate.                       |
@@ -401,11 +403,17 @@ password.
 ## Verify a release
 
 Releases published after the provenance workflow change carry a build provenance attestation for each binary, in
-addition to `SHA256SUMS.txt`. Verify a downloaded file with the GitHub CLI; earlier releases have no attestation, and
-the binaries are not Authenticode-signed yet:
+addition to `SHA256SUMS.txt`. Verify a downloaded file with the GitHub CLI; earlier releases have no attestation:
 
 ```bash
 gh attestation verify pfw.x64.exe --repo baliestri/pinentry-for-windows
+```
+
+The release workflow also Authenticode-signs the two Windows executables. Releases published before that change are
+unsigned, and the Linux relays are never signed this way. Check the signature in PowerShell:
+
+```powershell
+Get-AuthenticodeSignature .\pfw.x64.exe | Format-List Status, SignerCertificate, TimeStamperCertificate
 ```
 
 ## Build from source
