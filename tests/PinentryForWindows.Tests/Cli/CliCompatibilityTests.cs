@@ -48,6 +48,29 @@ public sealed class CliCompatibilityTests {
   }
 
   [Fact]
+  public async Task Version_prints_only_the_product_version_on_stdout() {
+    var directory = TestDirectory();
+    try {
+      var result = await RunAsync(directory, "--version");
+      Assert.Equal(0, result.ExitCode);
+      Assert.Matches(@"\Apfw \d+\.\d+\.\d+\.\d+\r?\n\z", result.StdOut);
+      Assert.Empty(result.StdErr);
+    }
+    finally { Directory.Delete(directory, true); }
+  }
+
+  [Fact]
+  public async Task Help_lists_the_version_command() {
+    var directory = TestDirectory();
+    try {
+      var result = await RunAsync(directory, "--help");
+      Assert.Equal(0, result.ExitCode);
+      Assert.Contains("--version", result.StdOut);
+    }
+    finally { Directory.Delete(directory, true); }
+  }
+
+  [Fact]
   public async Task Clear_specific_key_only_removes_the_local_windows_entry() {
     var directory = TestDirectory();
     try {
