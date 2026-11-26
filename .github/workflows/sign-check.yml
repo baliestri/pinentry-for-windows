@@ -1,0 +1,37 @@
+name: Rehearse release signing
+
+# Builds the release binaries and signs them exactly as a release would, but
+# creates no tag, branch or release. The signed executables stay as run artifacts.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Unpublished version to build (vMAJOR.MINOR.PATCH)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pinentry-sign-check
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Build release binaries on four native runners
+    permissions:
+      contents: read
+    uses: ./.github/workflows/validate.yml
+    with:
+      source_ref: ${{ github.sha }}
+      release_tag: ${{ inputs.version }}
+      upload_assets: true
+
+  sign:
+    name: Sign Windows binaries
+    needs: validate
+    permissions:
+      contents: read
+    uses: ./.github/workflows/sign.yml
+    secrets: inherit

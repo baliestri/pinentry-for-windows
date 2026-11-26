@@ -71,7 +71,9 @@ hand and what you did not.
 The release workflow runs the tests and a published-binary smoke check on each native x64 and ARM64 runner before
 creating a release. ARM64 remains unverified until those GitHub jobs run. It then Authenticode-signs the two Windows
 executables through SSL.com eSigner before promoting the tag; the credentials live in the `release-signing` GitHub
-environment, so a fork cannot run the release workflow as is.
+environment, so a fork cannot run the release workflow as is. To exercise the signing step without releasing, run the
+`Rehearse release signing` workflow from `develop` with an unpublished version: it builds and signs the same binaries
+and leaves them as run artifacts, creating no tag or release.
 
 ## Measuring prompt latency
 
